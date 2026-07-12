@@ -1,0 +1,36 @@
+# Go build and test output
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+dist/
+build/
+coverage/
+coverage.*
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.local
+.brunel/config.local.json
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
