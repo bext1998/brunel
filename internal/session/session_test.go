@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -53,8 +54,29 @@ func TestSessionLifecycleAndResume(t *testing.T) {
 	if events.Events[0].Payload == nil || strings.Contains(string(events.Events[0].Payload), "Authorization") {
 		t.Fatalf("unexpected event payload: %s", events.Events[0].Payload)
 	}
-	if _, err := store.Resume(name); err != nil {
+	if err := resumed.Close(ExitStatusAborted); err != nil {
+		t.Fatalf("Close(resumed) error = %v", err)
+	}
+	byName, err := store.Resume(name)
+	if err != nil {
 		t.Fatalf("Resume(name) error = %v", err)
+	}
+	if err := byName.Close(ExitStatusAborted); err != nil {
+		t.Fatalf("Close(byName) error = %v", err)
+	}
+}
+
+func TestResumeRunningSessionReturnsBusy(t *testing.T) {
+	store := newTestStore(t)
+	s, err := store.Create(CreateOptions{WorkspaceRoot: t.TempDir(), Mode: ModeWorkspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Resume(s.Metadata().ID); !errors.Is(err, ErrSessionBusy) {
+		t.Fatalf("Resume(running) error = %v, want E_SESSION_BUSY", err)
+	}
+	if err := s.Close(ExitStatusAborted); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -154,6 +176,47 @@ func TestSessionAppendOnlyAndSecretMask(t *testing.T) {
 	}
 }
 
+func TestSessionMetadataConcurrentWithAppendEvent(t *testing.T) {
+	store := newTestStore(t)
+	s, err := store.Create(CreateOptions{WorkspaceRoot: t.TempDir(), Mode: ModeWorkspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const appendCount = 100
+	var wg sync.WaitGroup
+	errs := make(chan error, appendCount)
+	for i := 0; i < appendCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := s.AppendEvent(EvToolResult, map[string]string{"value": "test"}, 0, "test")
+			errs <- err
+		}()
+	}
+	for i := 0; i < appendCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = s.Metadata()
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("AppendEvent() error = %v", err)
+		}
+	}
+	result, err := s.ReadEvents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Events) != appendCount {
+		t.Fatalf("event count = %d, want %d", len(result.Events), appendCount)
+	}
+}
+
 func TestUnnamedCleanExitDeletesAndAbortedRetains(t *testing.T) {
 	store := newTestStore(t)
 	clean, err := store.Create(CreateOptions{WorkspaceRoot: t.TempDir(), Mode: "workspace"})
@@ -214,6 +277,9 @@ func TestEventsTrailingFragmentIsNotRewritten(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"seq":1,"ts":"2026-01-01T00:00:00Z"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.Close(ExitStatusAborted); err != nil {
+		t.Fatal(err)
+	}
 	resumed, err := store.Resume(s.Metadata().ID)
 	if err != nil {
 		t.Fatal(err)
@@ -232,6 +298,9 @@ func TestEventsTrailingFragmentIsNotRewritten(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if string(after) != string(original) {
 		t.Fatal("trailing event fragment was rewritten")
+	}
+	if err := resumed.Close(ExitStatusAborted); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -253,6 +322,30 @@ func TestCleanupExpiredUnnamedAborted(t *testing.T) {
 	removed, err := store.CleanupExpired(time.Now())
 	if err != nil || removed != 1 {
 		t.Fatalf("CleanupExpired() = %d, %v", removed, err)
+	}
+}
+
+func TestCleanupExpiredRunningOnlyWhenOwnerLockIsFree(t *testing.T) {
+	store := newTestStore(t)
+	active, err := store.Create(CreateOptions{WorkspaceRoot: t.TempDir(), Mode: ModeWorkspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activeMeta := active.Metadata()
+	activeMeta.UpdatedAt = time.Now().Add(-73 * time.Hour)
+	if err := writeJSONAtomic(filepath.Join(active.Dir(), "meta.json"), activeMeta); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := store.CleanupExpired(time.Now())
+	if err != nil || removed != 0 {
+		t.Fatalf("CleanupExpired(active) = %d, %v", removed, err)
+	}
+	if err := active.lock.Close(); err != nil {
+		t.Fatal(err)
+	}
+	removed, err = store.CleanupExpired(time.Now())
+	if err != nil || removed != 1 {
+		t.Fatalf("CleanupExpired(orphan) = %d, %v", removed, err)
 	}
 }
 

@@ -33,6 +33,7 @@ var (
 	ErrInvalidArgument   = &Error{Code: "E_INVALID_ARGUMENT"}
 	ErrSessionNotFound   = &Error{Code: "E_SESSION_NOT_FOUND"}
 	ErrSessionAmbiguous  = &Error{Code: "E_SESSION_AMBIGUOUS"}
+	ErrSessionBusy       = &Error{Code: "E_SESSION_BUSY"}
 	ErrSessionCorrupt    = &Error{Code: "E_SESSION_CORRUPT"}
 	ErrEventLogTail      = &Error{Code: "E_EVENT_LOG_TAIL"}
 	ErrSessionClosed     = &Error{Code: "E_SESSION_CLOSED"}

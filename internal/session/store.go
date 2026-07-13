@@ -24,6 +24,7 @@ type Session struct {
 	store *Store
 	dir   string
 	meta  Meta
+	lock  sessionLock
 
 	mu             sync.Mutex
 	lastSeq        int
@@ -98,26 +99,35 @@ func (s *Store) Create(options CreateOptions) (*Session, error) {
 			}
 			return nil, codeError("E_SESSION_STORAGE", "cannot create session directory", err)
 		}
+		lock, err := acquireSessionLock(dir)
+		if err != nil {
+			_ = os.RemoveAll(dir)
+			return nil, sessionLockError(err)
+		}
 		meta := Meta{ID: id, Name: cloneStringPtr(options.Name), WorkspaceRoot: workspaceRoot, Mode: options.Mode, ModelID: options.ModelID, CreatedAt: s.now().UTC(), UpdatedAt: s.now().UTC(), ExitStatus: ExitStatusRunning, IsGitRepo: options.IsGitRepo}
 		if err := writeJSONAtomic(filepath.Join(dir, "meta.json"), meta); err != nil {
+			_ = lock.Close()
 			_ = os.RemoveAll(dir)
 			return nil, err
 		}
 		if err := writeJSONAtomic(filepath.Join(dir, "summary.json"), emptySummary()); err != nil {
+			_ = lock.Close()
 			_ = os.RemoveAll(dir)
 			return nil, err
 		}
 		if err := os.WriteFile(filepath.Join(dir, "events.jsonl"), nil, 0o600); err != nil {
+			_ = lock.Close()
 			_ = os.RemoveAll(dir)
 			return nil, codeError("E_SESSION_STORAGE", "cannot create events log", err)
 		}
 		if !options.IsGitRepo {
 			if err := os.Mkdir(filepath.Join(dir, "snapshot"), 0o700); err != nil {
+				_ = lock.Close()
 				_ = os.RemoveAll(dir)
 				return nil, codeError("E_SESSION_STORAGE", "cannot create snapshot directory", err)
 			}
 		}
-		return &Session{store: s, dir: dir, meta: meta}, nil
+		return &Session{store: s, dir: dir, meta: meta, lock: lock}, nil
 	}
 	return nil, codeError("E_SESSION_ID", "could not allocate unique session id", nil)
 }
@@ -180,6 +190,20 @@ func (s *Store) Resume(ref string) (*Session, error) {
 
 func (s *Store) openSession(meta Meta) (*Session, error) {
 	dir := filepath.Join(s.root, meta.ID)
+	lock, err := acquireSessionLock(dir)
+	if err != nil {
+		return nil, sessionLockError(err)
+	}
+	closeOnError := true
+	defer func() {
+		if closeOnError {
+			_ = lock.Close()
+		}
+	}()
+	meta, err = readMeta(filepath.Join(dir, "meta.json"))
+	if err != nil {
+		return nil, err
+	}
 	if _, err := os.Stat(filepath.Join(dir, "events.jsonl")); err != nil {
 		return nil, codeError(ErrSessionCorrupt.Code, "events log is missing", err)
 	}
@@ -191,7 +215,8 @@ func (s *Store) openSession(meta Meta) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Session{store: s, dir: dir, meta: meta, lastSeq: len(result.Events), trailingEvents: result.TrailingFragment}, nil
+	closeOnError = false
+	return &Session{store: s, dir: dir, meta: meta, lock: lock, lastSeq: len(result.Events), trailingEvents: result.TrailingFragment}, nil
 }
 
 func (s *Store) CleanupExpired(now time.Time) (int, error) {
@@ -208,17 +233,33 @@ func (s *Store) CleanupExpired(now time.Time) (int, error) {
 		if err != nil {
 			continue
 		}
-		if meta.Name == nil && meta.ExitStatus == ExitStatusAborted && now.Sub(meta.UpdatedAt) >= abortedRetention {
-			if err := os.RemoveAll(filepath.Join(s.root, entry.Name())); err != nil {
-				return removed, codeError("E_SESSION_STORAGE", "cannot remove expired session", err)
-			}
-			removed++
+		if meta.Name != nil || now.Sub(meta.UpdatedAt) < abortedRetention || (meta.ExitStatus != ExitStatusAborted && meta.ExitStatus != ExitStatusRunning) {
+			continue
 		}
+		lock, err := acquireSessionLock(filepath.Join(s.root, entry.Name()))
+		if errors.Is(err, errSessionBusy) {
+			continue
+		}
+		if err != nil {
+			return removed, sessionLockError(err)
+		}
+		if err := os.RemoveAll(filepath.Join(s.root, entry.Name())); err != nil {
+			_ = lock.Close()
+			return removed, codeError("E_SESSION_STORAGE", "cannot remove expired session", err)
+		}
+		if err := lock.Close(); err != nil {
+			return removed, codeError("E_SESSION_STORAGE", "cannot release expired session lock", err)
+		}
+		removed++
 	}
 	return removed, nil
 }
 
-func (s *Session) Metadata() Meta { return cloneMeta(s.meta) }
+func (s *Session) Metadata() Meta {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return cloneMeta(s.meta)
+}
 
 func (s *Session) Dir() string { return s.dir }
 
@@ -348,6 +389,9 @@ func (s *Session) Close(status string) error {
 		if err := os.RemoveAll(s.dir); err != nil {
 			return codeError("E_SESSION_STORAGE", "cannot remove unnamed clean session", err)
 		}
+	}
+	if err := s.lock.Close(); err != nil {
+		return codeError("E_SESSION_STORAGE", "cannot release session lock", err)
 	}
 	s.closed = true
 	return nil
