@@ -35,6 +35,97 @@ func baseOptions(command string) Options {
 	}
 }
 
+// TestWaitForExitAndOutput exercises the bounded wait in isolation, with
+// fake channels instead of a real process/job, so the "a descendant
+// process outlives the primary and keeps a pipe write end open" failure
+// mode from spec AC-10 can be simulated deterministically and fast,
+// rather than needing real Job Object fault injection.
+func TestWaitForExitAndOutput(t *testing.T) {
+	const shortDeadline = 50 * time.Millisecond
+
+	t.Run("success", func(t *testing.T) {
+		exitCh := make(chan struct{})
+		close(exitCh)
+		stdoutCh := make(chan pipeResult, 1)
+		stderrCh := make(chan pipeResult, 1)
+		stdoutCh <- pipeResult{data: []byte("out")}
+		stderrCh <- pipeResult{data: []byte("err")}
+
+		stdout, stderr, err := waitForExitAndOutput(exitCh, stdoutCh, stderrCh, shortDeadline, nil)
+		if err != nil {
+			t.Fatalf("err = %v, want nil", err)
+		}
+		if string(stdout.data) != "out" || string(stderr.data) != "err" {
+			t.Fatalf("stdout/stderr = %q/%q, want %q/%q", stdout.data, stderr.data, "out", "err")
+		}
+	})
+
+	t.Run("exit never confirmed", func(t *testing.T) {
+		exitCh := make(chan struct{}) // never closed
+		stdoutCh := make(chan pipeResult)
+		stderrCh := make(chan pipeResult)
+		cause := errors.New("terminate failed")
+
+		start := time.Now()
+		_, _, err := waitForExitAndOutput(exitCh, stdoutCh, stderrCh, shortDeadline, cause)
+		elapsed := time.Since(start)
+
+		if !errors.Is(err, ErrExecInternal) {
+			t.Fatalf("err = %v, want E_EXEC_INTERNAL", err)
+		}
+		if !errors.Is(err, cause) {
+			t.Fatalf("err = %v, want it to wrap cause %v", err, cause)
+		}
+		if elapsed > time.Second {
+			t.Fatalf("took %v, want close to the %v deadline", elapsed, shortDeadline)
+		}
+	})
+
+	// This is the scenario from the review finding: exit is confirmed
+	// promptly (e.g. a fallback TerminateProcess killed the primary
+	// process), but a grandchild outside the job's reach still holds a
+	// pipe write end open, so that pipe alone never reaches EOF. The
+	// overall wait must still return within the shared deadline instead
+	// of hanging on the unconditional pipe receive.
+	t.Run("stdout never drains after exit confirmed", func(t *testing.T) {
+		exitCh := make(chan struct{})
+		close(exitCh)
+		stdoutCh := make(chan pipeResult) // never delivers
+		stderrCh := make(chan pipeResult, 1)
+		stderrCh <- pipeResult{}
+
+		start := time.Now()
+		_, _, err := waitForExitAndOutput(exitCh, stdoutCh, stderrCh, shortDeadline, nil)
+		elapsed := time.Since(start)
+
+		if !errors.Is(err, ErrExecInternal) {
+			t.Fatalf("err = %v, want E_EXEC_INTERNAL", err)
+		}
+		if elapsed > time.Second {
+			t.Fatalf("took %v, want close to the %v deadline", elapsed, shortDeadline)
+		}
+	})
+
+	t.Run("stderr never drains after exit confirmed", func(t *testing.T) {
+		exitCh := make(chan struct{})
+		close(exitCh)
+		stdoutCh := make(chan pipeResult, 1)
+		stdoutCh <- pipeResult{}
+		stderrCh := make(chan pipeResult) // never delivers
+
+		start := time.Now()
+		_, _, err := waitForExitAndOutput(exitCh, stdoutCh, stderrCh, shortDeadline, nil)
+		elapsed := time.Since(start)
+
+		if !errors.Is(err, ErrExecInternal) {
+			t.Fatalf("err = %v, want E_EXEC_INTERNAL", err)
+		}
+		if elapsed > time.Second {
+			t.Fatalf("took %v, want close to the %v deadline", elapsed, shortDeadline)
+		}
+	})
+}
+
 func TestPSRunner_HappyPath(t *testing.T) {
 	r := newTestRunner(t)
 	out, err := r.Run(context.Background(), baseOptions("Write-Output 'hello'; exit 3"))

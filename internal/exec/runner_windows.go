@@ -4,6 +4,7 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -203,21 +204,18 @@ func (r *Runner) Run(ctx context.Context, opts Options) (Output, error) {
 	if termErr != nil {
 		// Job-level kill failed; fall back to killing the tracked
 		// process directly so there is still a path to a confirmed exit.
-		syscall.TerminateProcess(pi.Process, 1)
+		// If this ALSO fails, join it into termErr rather than
+		// discarding it -- both are relevant if the bounded wait below
+		// ultimately gives up.
+		if tpErr := syscall.TerminateProcess(pi.Process, 1); tpErr != nil {
+			termErr = errors.Join(termErr, tpErr)
+		}
 	}
 
-	select {
-	case <-exitCh: // closed, not just signaled once, so an earlier fire here is fine
-	case <-time.After(terminationGracePeriod):
-		// Could not confirm the process tree actually died. Returning
-		// here instead of blocking forever preserves Run's
-		// deterministic-termination contract, at the cost of admitting
-		// termination could not be verified.
-		return Output{}, codeError(ErrExecInternal.Code, "could not confirm process tree termination", termErr)
+	stdout, stderr, waitErr := waitForExitAndOutput(exitCh, stdoutCh, stderrCh, terminationGracePeriod, termErr)
+	if waitErr != nil {
+		return Output{}, waitErr
 	}
-
-	stdout := <-stdoutCh
-	stderr := <-stderrCh
 
 	out := Output{
 		Stdout:          stdout.data,
@@ -235,6 +233,43 @@ func (r *Runner) Run(ctx context.Context, opts Options) (Output, error) {
 type pipeResult struct {
 	data      []byte
 	truncated bool
+}
+
+// waitForExitAndOutput waits for confirmed process exit and both pipes
+// to reach EOF, all against one shared deadline. A single deadline
+// (rather than one per wait) matters: if Job Object termination fails
+// and the process-level fallback only kills the directly-tracked
+// process, a grandchild outside the job's reach could still hold a
+// pipe's write end open indefinitely -- so the pipe drains must be
+// bounded by the same grace period as the exit-confirmation wait, not
+// left as unconditional receives, or that scenario still hangs Run
+// forever despite the exit-side bound.
+func waitForExitAndOutput(exitCh <-chan struct{}, stdoutCh, stderrCh <-chan pipeResult, deadline time.Duration, cause error) (pipeResult, pipeResult, error) {
+	timer := time.NewTimer(deadline)
+	defer timer.Stop()
+
+	select {
+	case <-exitCh: // closed, not just signaled once, so an earlier fire here is fine
+	case <-timer.C:
+		// Could not confirm the process tree actually died. Returning
+		// here instead of blocking forever preserves the deterministic-
+		// termination contract, at the cost of admitting termination
+		// could not be verified.
+		return pipeResult{}, pipeResult{}, codeError(ErrExecInternal.Code, "could not confirm process tree termination within the grace period", cause)
+	}
+
+	var stdout, stderr pipeResult
+	select {
+	case stdout = <-stdoutCh:
+	case <-timer.C:
+		return pipeResult{}, pipeResult{}, codeError(ErrExecInternal.Code, "stdout pipe did not reach EOF after process tree termination (a descendant may still hold it open)", cause)
+	}
+	select {
+	case stderr = <-stderrCh:
+	case <-timer.C:
+		return pipeResult{}, pipeResult{}, codeError(ErrExecInternal.Code, "stderr pipe did not reach EOF after process tree termination (a descendant may still hold it open)", cause)
+	}
+	return stdout, stderr, nil
 }
 
 // drainPipe reads h until EOF (i.e. every inheritable copy of its write
