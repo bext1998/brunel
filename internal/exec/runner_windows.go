@@ -13,12 +13,14 @@ import (
 	osexec "os/exec"
 )
 
-// Runner executes a single PowerShell 7 command per Run call, bound into
-// a fresh Windows Job Object so the whole process tree it spawns is
+// Runner executes PowerShell 7 commands. Each Run call is bound into its
+// own fresh Windows Job Object so the whole process tree it spawns is
 // deterministically terminated on timeout, cancellation, or completion.
+// A Runner may be used for multiple concurrent Run calls; see
+// createProcessMu for the one part of that path that must still be
+// serialized process-wide.
 type Runner struct {
 	pwshPath string
-	mu       sync.Mutex
 }
 
 // NewRunner locates pwsh (PowerShell 7+) on PATH. It never falls back to
@@ -59,16 +61,25 @@ func validateOptions(opts Options) error {
 // package; production code paths leave it nil.
 var testHookAfterAssignBeforeResume func(job, process syscall.Handle)
 
+// createProcessMu serializes every Runner's handle-creation-through-
+// CreateProcess span, process-wide, not just per Runner. CreateProcess
+// with bInheritHandles=true duplicates *every* currently-inheritable
+// handle in the process into the new child, not just the ones referenced
+// in STARTUPINFO -- so two concurrent Run calls, even on separate Runner
+// instances, could otherwise have one child inherit another's still-open
+// pipe write end, which would prevent that pipe from ever seeing EOF.
+var createProcessMu sync.Mutex
+
+// terminationGracePeriod bounds how long Run waits to confirm the
+// process tree actually died after a Job Object (or, as a fallback,
+// direct process) termination request. It exists so a failed
+// termination call can never hang Run forever.
+const terminationGracePeriod = 5 * time.Second
+
 func (r *Runner) Run(ctx context.Context, opts Options) (Output, error) {
 	if err := validateOptions(opts); err != nil {
 		return Output{}, err
 	}
-
-	// One command at a time per Runner: keeps the set of inheritable
-	// handles alive at CreateProcess time limited to the ones this call
-	// itself creates (see plan §"Handle 繼承的安全取捨").
-	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	cmdLine := buildCommandLine(r.pwshPath, opts.Command)
 
@@ -82,31 +93,54 @@ func (r *Runner) Run(ctx context.Context, opts Options) (Output, error) {
 		return Output{}, codeError(ErrExecInternal.Code, "cannot set job object limits", err)
 	}
 
+	createProcessMu.Lock()
+
 	stdin, err := openNulReadHandle()
 	if err != nil {
+		createProcessMu.Unlock()
 		return Output{}, codeError(ErrExecInternal.Code, "cannot open NUL for stdin", err)
 	}
-	defer syscall.CloseHandle(stdin)
 
 	stdoutRead, stdoutWrite, err := createOutputPipe()
 	if err != nil {
+		syscall.CloseHandle(stdin)
+		createProcessMu.Unlock()
 		return Output{}, codeError(ErrExecInternal.Code, "cannot create stdout pipe", err)
 	}
-	defer syscall.CloseHandle(stdoutRead)
+	// stdoutRead's ownership transfers to drainPipe below once Run
+	// actually reaches it; until then, Run itself must close it on every
+	// early-return path (avoids the double-close that would otherwise
+	// happen if both this defer and drainPipe's own close ran).
+	closeStdoutRead := true
+	defer func() {
+		if closeStdoutRead {
+			syscall.CloseHandle(stdoutRead)
+		}
+	}()
 
 	stderrRead, stderrWrite, err := createOutputPipe()
 	if err != nil {
+		syscall.CloseHandle(stdin)
 		syscall.CloseHandle(stdoutWrite)
+		createProcessMu.Unlock()
 		return Output{}, codeError(ErrExecInternal.Code, "cannot create stderr pipe", err)
 	}
-	defer syscall.CloseHandle(stderrRead)
+	closeStderrRead := true
+	defer func() {
+		if closeStderrRead {
+			syscall.CloseHandle(stderrRead)
+		}
+	}()
 
 	pi, err := startSuspendedProcess(opts.WorkDir, cmdLine, stdin, stdoutWrite, stderrWrite)
-	// The child inherited its own copies of the write ends; the parent's
-	// copies must close now regardless of outcome, or the read side will
-	// never see EOF once the child exits.
+	// The child inherited its own copies of these; the parent's copies
+	// must close now regardless of outcome -- both so the read sides can
+	// see EOF once the child exits, and to end the process-wide
+	// inheritance window createProcessMu protects.
+	syscall.CloseHandle(stdin)
 	syscall.CloseHandle(stdoutWrite)
 	syscall.CloseHandle(stderrWrite)
+	createProcessMu.Unlock()
 	if err != nil {
 		return Output{}, codeError(ErrExecInternal.Code, "cannot start pwsh", err)
 	}
@@ -131,6 +165,10 @@ func (r *Runner) Run(ctx context.Context, opts Options) (Output, error) {
 	}
 	syscall.CloseHandle(pi.Thread)
 
+	// From here on, drainPipe owns stdoutRead/stderrRead and closes them
+	// itself; Run must not close them again on the way out.
+	closeStdoutRead = false
+	closeStderrRead = false
 	stdoutCh := drainPipe(stdoutRead, opts.MaxOutputBytes)
 	stderrCh := drainPipe(stderrRead, opts.MaxOutputBytes)
 
@@ -161,8 +199,22 @@ func (r *Runner) Run(ctx context.Context, opts Options) (Output, error) {
 	// this command outlives Run(), matching "整棵程序樹終止" for every
 	// exit path, not just timeout/cancel. Safe/idempotent once the
 	// primary process has already exited on its own.
-	terminateJobObject(job, 1)
-	<-exitCh // exitCh is closed, not just signaled once, so this never blocks here
+	termErr := terminateJobObject(job, 1)
+	if termErr != nil {
+		// Job-level kill failed; fall back to killing the tracked
+		// process directly so there is still a path to a confirmed exit.
+		syscall.TerminateProcess(pi.Process, 1)
+	}
+
+	select {
+	case <-exitCh: // closed, not just signaled once, so an earlier fire here is fine
+	case <-time.After(terminationGracePeriod):
+		// Could not confirm the process tree actually died. Returning
+		// here instead of blocking forever preserves Run's
+		// deterministic-termination contract, at the cost of admitting
+		// termination could not be verified.
+		return Output{}, codeError(ErrExecInternal.Code, "could not confirm process tree termination", termErr)
+	}
 
 	stdout := <-stdoutCh
 	stderr := <-stderrCh

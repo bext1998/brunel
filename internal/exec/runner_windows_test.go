@@ -5,6 +5,7 @@ package exec
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -74,6 +75,53 @@ func TestPSRunner_InvalidOptions(t *testing.T) {
 				t.Fatalf("Run() error = %v, want E_INVALID_ARGUMENT", err)
 			}
 		})
+	}
+}
+
+// TestPSRunner_ConcurrentRunsAcrossRunners exercises many concurrent Run
+// calls spread across separate Runner instances. Before createProcessMu
+// was made process-wide (rather than per-Runner), CreateProcess's
+// bInheritHandles=true could let one Runner's child inherit another
+// still-open Runner's pipe write end, which would either hang that
+// other Run call waiting for EOF or never happen deterministically
+// enough to reproduce -- so this asserts every call finishes within a
+// bounded time with its own correct, uncontaminated output.
+func TestPSRunner_ConcurrentRunsAcrossRunners(t *testing.T) {
+	const n = 12
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	outs := make([]string, n)
+
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			r := newTestRunner(t)
+			out, err := r.Run(context.Background(), baseOptions(fmt.Sprintf("Write-Output 'run-%d'", i)))
+			errs[i] = err
+			outs[i] = strings.TrimSpace(string(out.Stdout))
+		}(i)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("concurrent Run calls did not all finish within 30s; likely a handle-inheritance hang")
+	}
+
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Errorf("run %d: error = %v", i, errs[i])
+		}
+		want := fmt.Sprintf("run-%d", i)
+		if outs[i] != want {
+			t.Errorf("run %d: Stdout = %q, want %q", i, outs[i], want)
+		}
 	}
 }
 
