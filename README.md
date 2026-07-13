@@ -4,11 +4,11 @@ Brunel 是一個面向 Windows x64 的實驗性 coding harness，用來驗證：
 
 ## 專案狀態
 
-目前處於 Alpha 1 規格審查階段，尚未開始程式碼實作。正式需求、架構不變式、凍結介面與驗收條件請參閱 [`docs/spec.md`](docs/spec.md)。
+目前處於 Alpha 1 初期實作階段。正式需求、架構不變式、凍結介面與驗收條件請參閱 [`docs/spec.md`](docs/spec.md)。
 
 ## 技術環境
 
-- Go 1.24.x
+- Go 1.22（目前實作基線；規格目標仍為 Go 1.24.x）
 - Windows x64
 - PowerShell 7 (`pwsh`)
 - `CGO_ENABLED=0` 靜態編譯
@@ -18,6 +18,10 @@ Brunel 是一個面向 Windows x64 的實驗性 coding harness，用來驗證：
 - Coding Agent 先閱讀 `AGENTS.md`、`MAZE_PROJECT.md`、`STATUS.md` 與 `NEXT_ACTION.md`。
 - 不得自行修改規格中的 `[FROZEN]` 契約；變更須走規格修訂與使用者裁決。
 - 後續變更使用功能分支與 Pull Request，不直接推送 `main`。
+
+## Session 資料安全
+
+Session 會以未加密檔案保存在本機。Brunel 會在寫入前遮罩已知的 API key、Authorization header 與 `.env` 憑證模式，但這僅是 best-effort，無法保證辨識所有敏感內容；API key 與 token 不得寫入 Session，正式憑證只由 Windows Credential Manager 提供。
 
 ## 授權
 
