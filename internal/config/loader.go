@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -108,7 +109,12 @@ func readLayer(path, source string) (layerConfig, bool, error) {
 	if err := ensureEOF(decoder); err != nil {
 		return layerConfig{}, false, configError(ErrConfigInvalid.Code, source, errors.New("trailing JSON data"))
 	}
+	fields := make([]string, 0, len(raw))
 	for field := range raw {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	for _, field := range fields {
 		if _, ok := allowedFields[field]; ok {
 			if string(raw[field]) == "null" {
 				return layerConfig{}, false, configError(ErrConfigInvalid.Code, source, errors.New("null values are not allowed"))

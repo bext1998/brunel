@@ -15,3 +15,9 @@ func TestPlatformCredentialSourceUnsupported(t *testing.T) {
 		t.Fatalf("Load() error = %v, want E_UNSUPPORTED_PLATFORM", err)
 	}
 }
+
+func TestPlatformCredentialWriterUnsupported(t *testing.T) {
+	if err := NewPlatformCredentialWriter().SetOpenRouterAPIKey("key"); !errors.Is(err, ErrUnsupportedPlatform) {
+		t.Fatalf("SetOpenRouterAPIKey() error = %v, want E_UNSUPPORTED_PLATFORM", err)
+	}
+}

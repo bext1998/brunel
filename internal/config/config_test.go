@@ -68,6 +68,33 @@ func TestLoaderStrictAndForbiddenConfig(t *testing.T) {
 	}
 }
 
+func TestReadLayerInvalidFieldMessageIsStable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	writeConfig(t, path, `{"unknown":true,"api_key":"not-a-real-key"}`)
+
+	var first string
+	for i := 0; i < 100; i++ {
+		_, _, err := readLayer(path, "project")
+		if err == nil {
+			t.Fatal("readLayer() unexpectedly succeeded")
+		}
+		var coded *Error
+		if !errors.As(err, &coded) || coded.Cause == nil {
+			t.Fatalf("readLayer() error = %v, want a coded cause", err)
+		}
+		message := coded.Cause.Error()
+		if i == 0 {
+			first = message
+		}
+		if message != first {
+			t.Fatalf("readLayer() cause changed: first %q, got %q", first, message)
+		}
+	}
+	if !strings.Contains(first, "forbidden security field") {
+		t.Fatalf("readLayer() error = %q, want forbidden security field", first)
+	}
+}
+
 func TestLoaderMissingLayersUseDefaults(t *testing.T) {
 	loader := NewLoader(t.TempDir(), t.TempDir(), fakeCredentialSource{key: "key"})
 	resolved, err := loader.Load(context.Background(), CLIOverrides{})

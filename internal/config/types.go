@@ -42,6 +42,10 @@ type CredentialSource interface {
 	OpenRouterAPIKey(context.Context) (string, error)
 }
 
+type CredentialWriter interface {
+	SetOpenRouterAPIKey(string) error
+}
+
 type Loader struct {
 	WorkspaceRoot string
 	UserProfile   string
