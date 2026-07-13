@@ -1,0 +1,119 @@
+package config
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+type fakeCredentialSource struct {
+	key string
+	err error
+}
+
+func (f fakeCredentialSource) OpenRouterAPIKey(context.Context) (string, error) {
+	return f.key, f.err
+}
+
+func TestLoaderLayerPrecedenceAndCLIEmptyOverride(t *testing.T) {
+	root := t.TempDir()
+	profile := t.TempDir()
+	writeConfig(t, filepath.Join(profile, ".brunel", "config.json"), `{"mode":"readonly","model_id":"global"}`)
+	writeConfig(t, filepath.Join(root, ".brunel", "config.json"), `{"mode":"workspace","model_id":"project"}`)
+	loader := NewLoader(root, profile, fakeCredentialSource{key: "secret-key"})
+	resolved, err := loader.Load(context.Background(), CLIOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Config.Mode != ModeWorkspace || resolved.Config.ModelID != "project" || resolved.OpenRouterAPIKey() != "secret-key" {
+		t.Fatalf("unexpected resolved config: %#v", resolved)
+	}
+	empty := ""
+	if _, err := loader.Load(context.Background(), CLIOverrides{ModelID: &empty}); !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("empty CLI override error = %v, want E_CONFIG_INVALID", err)
+	}
+}
+
+func TestLoaderStrictAndForbiddenConfig(t *testing.T) {
+	root := t.TempDir()
+	profile := t.TempDir()
+	loader := NewLoader(root, profile, fakeCredentialSource{key: "key"})
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"unknown", `{"mode":"workspace","extra":true}`},
+		{"credential", `{"mode":"workspace","api_key":"leak"}`},
+		{"safety", `{"mode":"workspace","approval":"auto"}`},
+		{"malformed", `{"mode":"workspace"`},
+		{"bad-mode", `{"mode":"unsafe"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(profile, ".brunel", "config.json")
+			writeConfig(t, path, tc.body)
+			_, err := loader.Load(context.Background(), CLIOverrides{})
+			if !errors.Is(err, ErrConfigInvalid) {
+				t.Fatalf("Load() error = %v, want E_CONFIG_INVALID", err)
+			}
+			if strings.Contains(err.Error(), "leak") || strings.Contains(err.Error(), "secret-key") {
+				t.Fatalf("config error leaked sensitive content: %v", err)
+			}
+			_ = os.Remove(path)
+		})
+	}
+}
+
+func TestLoaderMissingLayersUseDefaults(t *testing.T) {
+	loader := NewLoader(t.TempDir(), t.TempDir(), fakeCredentialSource{key: "key"})
+	resolved, err := loader.Load(context.Background(), CLIOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Config.Mode != ModeWorkspace || resolved.Config.ModelID != "" {
+		t.Fatalf("unexpected defaults: %#v", resolved.Config)
+	}
+}
+
+func TestCredentialErrorsDoNotExposeSourceDetails(t *testing.T) {
+	loader := NewLoader(t.TempDir(), t.TempDir(), fakeCredentialSource{err: errors.New("credential secret-value")})
+	_, err := loader.Load(context.Background(), CLIOverrides{})
+	if !errors.Is(err, ErrConfigCredential) {
+		t.Fatalf("Load() error = %v, want E_CONFIG_CREDENTIAL", err)
+	}
+	if strings.Contains(err.Error(), "secret-value") {
+		t.Fatalf("credential error leaked source detail: %v", err)
+	}
+}
+
+func TestResolvedFormattingNeverIncludesAPIKey(t *testing.T) {
+	loader := NewLoader(t.TempDir(), t.TempDir(), fakeCredentialSource{key: "super-secret-key"})
+	resolved, err := loader.Load(context.Background(), CLIOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(resolved.String(), resolved.OpenRouterAPIKey()) {
+		t.Fatalf("resolved formatting leaked API key: %s", resolved.String())
+	}
+	encoded, err := json.Marshal(resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), resolved.OpenRouterAPIKey()) || strings.Contains(fmt.Sprintf("%#v", resolved), resolved.OpenRouterAPIKey()) {
+		t.Fatal("resolved serialization or formatting leaked API key")
+	}
+}
+
+func writeConfig(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
