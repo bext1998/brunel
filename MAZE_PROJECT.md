@@ -12,7 +12,9 @@
 ## 文件
 
 - Spec：docs/spec.md
-- Project Brief：PROJECT_BRIEF.md
+- Product Brief：PROJECT_BRIEF.md
+- Product Proposal：docs/Brunel_產品提案.md
+- Runtime ADR：docs/adr/ADR-001-runtime-language.md
 - Status：STATUS.md
 - Next Action：NEXT_ACTION.md
 - Decisions：DECISIONS.md
@@ -36,4 +38,4 @@
 
 ## 備注
 
-- 規格引用的 `Brunel_產品提案.md` 與 `ADR-001` 尚未存在於目前 repository，補齊前視為文件阻塞。
+- `docs/spec.md` 的前置文件與 `docs/adr/ADR-001-runtime-language.md` 已存在；規格、ADR 與實作基線的版本差異須以 `STATUS.md` 與 `NEXT_ACTION.md` 明確記錄。

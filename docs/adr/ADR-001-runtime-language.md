@@ -2,11 +2,17 @@
 
 ## 狀態
 
-Accepted
+Accepted（2026-07-14 修訂工具鏈基線）
 
 ## 日期
 
 2026-07-13
+
+## 2026-07-14 修訂
+
+語言與執行環境選型維持 Go、零 CGO、靜態編譯與 Windows x64，不改變本 ADR 的原始理由。工具鏈基線由 Go 1.24.x 更新為 Go 1.25.x，以支援 Alpha 1 採用的 Bubble Tea v2 薄型 TUI。
+
+Bubble Tea 僅可存在於 presentation 層；agent loop、provider、tools、session 與 completion 不得依賴該框架。Go 1.25.x、`golang.org/x/sys/windows`、`charm.land/bubbletea/v2`、`CGO_ENABLED=0`、`GOOS=windows GOARCH=amd64` 共同構成修訂後基線。
 
 ## 脈絡
 
@@ -18,11 +24,11 @@ Alpha 1 有兩項硬需求 ——
 
 | 選項 | 單檔 exe | Job Object 取得難度 | AI 代理產出穩定度 | 與既有專案棧一致性 | 依賴負債 |
 |---|---|---|---|---|---|
-| Go 1.24 | 原生靜態編譯 | 低，可直接使用 Win32 API binding | 高 | 高 | 低 |
+| Go 1.25 | 原生靜態編譯 | 低，可直接使用 Win32 API binding | 高 | 高 | 低 |
 | TypeScript + Node 22 | SEA / bun compile 有限制 | 高，需 N-API native addon | 高 | 高 | 高 |
 | Rust | 原生靜態編譯 | 低，可直接使用 Windows API crate | 較低 | 低 | 中 |
 
-## 決策
+## 原始決策（版本基線已由 2026-07-14 修訂取代）
 
 Go 1.24.x，golang.org/x/sys/windows，CGO_ENABLED=0，靜態編譯，GOOS=windows GOARCH=amd64。
 
@@ -39,7 +45,7 @@ SSE streaming 解析、agent loop、tool schema 產生器需自行實作。
 
 ## 推翻條件
 
-若未來需要 in-process 執行 TS Language Service 等 JS 生態工具則需重新評估；但 spec §5.4 已明確排除 LSP。
+若未來需要 in-process 執行 TS Language Service 等 JS 生態工具則需重新評估；但 spec §2.2 已明確排除 LSP。
 
 ## 被否決的選項與原因
 

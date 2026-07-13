@@ -294,7 +294,7 @@ func readCounter(t *testing.T, path string) (int, bool) {
 }
 
 // TestPSRunner_JobBoundBeforeResume covers the escape-window requirement
-// from spec §10.3: AssignProcessToJobObject must have already completed
+// from spec §6.4: AssignProcessToJobObject must have already completed
 // before the suspended thread ever runs a single instruction.
 func TestPSRunner_JobBoundBeforeResume(t *testing.T) {
 	r := newTestRunner(t)

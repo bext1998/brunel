@@ -4,18 +4,20 @@
 
 ## 下一個 Session 目標
 
-#3（Workspace）與 #6（F-5 exec）皆已合併並關閉；下一個未阻塞的 P1 項目是 #5（F-4 stale-read 防護，AC-5），以 workspace guard 為前置條件，現已具備。
+開始 #5（F-4 stale-read）：實作 expected_hash 前置條件與原子寫入，對應 v1.2 AC-7。
 
 ## 優先行動
 
-1. 開始 #5（F-4）：實作 stale-read hash 前置條件與原子寫入，對應 AC-5。
-2. 之後串接 `internal/exec` 到 `tools`/`safety` 時，`Options` 的 Timeout／MaxProcesses／MaxMemoryBytes／MaxOutputBytes 需呼叫端明確帶入，不得自行填入預設值；實際數字待 OQ-4 裁決。
+1. 實作 #5：read_file 回傳全檔 SHA-256；apply_patch／write_file 驗證 expected_hash，失敗保留原檔。
+2. 依 #5 的 AC 補 stale、patch conflict、取消與原子寫入回歸測試。
+3. 之後處理 #7 的 AUTO／CONFIRM 安全入口，再解除 #4 與 #2 的相依阻塞。
+4. 規劃 #2 前將 Go module 基線由 1.22 同步至 1.25.x，並引入 Bubble Tea v2；此項需另行實作授權。
 
 ## 阻塞與待決策
 
-- OQ-4（benchmark 硬性上限）未裁決，`internal/exec` 呼叫端與未來 benchmark（#15）仍無法帶入具體數字。
+- 無 Alpha 1 硬阻塞；`docs/spec.md` §16 的 Open Questions 依各自裁決前行為處理。
 
 ## 參考
 
-- `docs/spec.md` §0、§5.1、§7.3～§7.5、§10.3、§11.2、§13、§15.1～§15.5、§15.8
+- `docs/spec.md` §4～§6、§8～§16
 - `MAZE_PROJECT.md`
