@@ -8,7 +8,7 @@ Brunel 是一個面向 Windows x64 的實驗性 coding harness，用來驗證：
 
 ## 技術環境
 
-- Go 1.22（目前實作基線；規格目標仍為 Go 1.24.x）
+- Go 1.22（目前實作基線；Alpha 1 v1.2 目標基線為 Go 1.25.x，TUI 實作前需同步）
 - Windows x64
 - PowerShell 7 (`pwsh`)
 - `CGO_ENABLED=0` 靜態編譯
