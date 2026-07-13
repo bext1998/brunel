@@ -1,8 +1,8 @@
 # Brunel — 當前狀態
 
 > 最後同步：2026-07-14
-> Branch：main
-> Working tree：包含已授權但尚未提交的 v1.2 規格與相關文件對齊修訂
+> Branch：maze/2026-07-14-12aa7b
+> Working tree：乾淨；v1.2 規格與相關文件對齊修訂已提交於 PR #23
 
 ## 進行中 Issues
 
@@ -16,7 +16,7 @@
 
 ## 等待 Review
 
-- 無。
+- PR #23（v1.2 規格與相關文件對齊）已建立 draft，等待 review。
 
 ## 等待 Merge
 
