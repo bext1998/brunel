@@ -4,17 +4,16 @@
 
 ## 下一個 Session 目標
 
-在具備 Windows symlink 建立權限的環境補跑 #3 的 symlink escape 測試，並開始 #4 stale-read 防護。
+#3 的 symlink escape 測試已於 Developer Mode 環境驗證通過，AC-6 全數完成；開始 #4 stale-read 防護。
 
 ## 優先行動
 
-1. 在啟用 Developer Mode 或具備 symlink privilege 的 Windows runner 執行 `go test -v ./internal/workspace`；通過前不得宣稱 AC-6 完成。
+1. `go test -v ./internal/workspace` 已在 Developer Mode 環境完整執行，8 個測試（含 symlink escape）全數通過，AC-6 可宣稱完成。
 2. 另開工作處理 #4（F-4），以 workspace guard 為前置條件實作 stale-read 與 AC-5。
-3. Review #3 的功能分支與驗證限制；symlink 測試補齊後再判定是否可合併及關閉 Issue。
+3. Review #3 的功能分支；AC-6 驗證限制已解除，依 review 結果判定合併並關閉 Issue。
 
 ## 阻塞與待決策
 
-- #3 的 symlink escape 驗證受目前 Windows 帳號權限阻塞；junction／絕對路徑案例不代表 AC-6 全數通過。
 - AC-5 受 #4 未實作阻塞。
 
 ## 參考

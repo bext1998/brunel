@@ -28,7 +28,7 @@
 
 ## 最近完成
 
-- #3（F-2 Workspace）核心完成：root 真實路徑／identity 綁定、junction／絕對路徑逃逸攔截與 TC-WS 測試已完成；本機完整測試、vet 與 Windows 零 CGO build 通過。
+- #3（F-2 Workspace）核心完成：root 真實路徑／identity 綁定、junction／絕對路徑／symlink 逃逸攔截與 TC-WS 測試已全數通過（含 symlink escape，於 Developer Mode 環境驗證）；本機完整測試、vet 與 Windows 零 CGO build 通過。
 - #10／#12 已分別透過 PR #16／#17 合併至 `main`。
 - 完成 Alpha 1 v1.1 規格，狀態為 Review。
 - 建立 Git、GitHub 與 Maze 專案治理基礎。
@@ -40,5 +40,4 @@
 
 ## 已知驗證限制
 
-- AC-6 尚未可宣稱通過：目前 Windows 帳號缺少建立 symlink 權限，symlink escape 測試被明確 skip；junction 與絕對路徑案例已通過。
 - AC-5 的 stale-read 防護屬 #4，尚未實作。
