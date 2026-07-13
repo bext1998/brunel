@@ -1,8 +1,8 @@
 # Brunel — 當前狀態
 
 > 最後同步：2026-07-13
-> Branch：agent/config-issue-12
-> Working tree：保留既有 STATUS／NEXT_ACTION 修改與未追蹤規格文件
+> Branch：maze/2026-07-13-f9834b
+> Working tree：Issue #3 變更位於功能分支，待 review／merge
 
 ## 進行中 Issues
 
@@ -11,15 +11,12 @@
 
 ## 阻塞 Issues
 
-- #2（CLI）等待 #10 與 #12 的 PR review／合併後才能開始實作。
-- 規格引用的 `Brunel_產品提案.md` 與 `ADR-001` 雖出現在未追蹤工作區，尚未納入 repository。
 - `docs/spec.md` §15.8 列出的 Open Questions 尚待使用者裁決。
 - #15（Smoke Benchmark Runner）受 OQ-4 的硬性預算裁決阻塞。
 
 ## 等待 Review
 
-- [#16 Implement Session persistence and resume](https://github.com/bext1998/brunel/pull/16)：draft，關聯 #10；本機測試、vet 與 Windows 零 CGO build 通過，GitHub 無適用 checks。
-- [#17 Implement layered config and credential separation](https://github.com/bext1998/brunel/pull/17)：draft，關聯 #12；本機測試、vet 與 Windows 零 CGO build 通過，GitHub 無適用 checks。
+- 無。
 
 ## 等待 Merge
 
@@ -31,10 +28,16 @@
 
 ## 最近完成
 
+- #3（F-2 Workspace）核心完成：root 真實路徑／identity 綁定、junction／絕對路徑／symlink 逃逸攔截與 TC-WS 測試已全數通過（含 symlink escape，於 Developer Mode 環境驗證）；本機完整測試、vet 與 Windows 零 CGO build 通過。
+- #10／#12 已分別透過 PR #16／#17 合併至 `main`。
 - 完成 Alpha 1 v1.1 規格，狀態為 Review。
 - 建立 Git、GitHub 與 Maze 專案治理基礎。
 - 依 `docs/spec.md` 需求追蹤矩陣建立 #1～#15、結構化標籤與原生父子關係。
 
-## 未追蹤本機工作
+## 分支內工作
 
-- `docs/Brunel_產品提案.md`、`docs/adr/`、`docs/open-questions.md`（既有未追蹤項目）。
+- `internal/workspace/`（Issue #3 實作，待 review／merge）。
+
+## 已知驗證限制
+
+- AC-5 的 stale-read 防護屬 #4，尚未實作。

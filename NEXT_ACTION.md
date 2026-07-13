@@ -4,19 +4,17 @@
 
 ## 下一個 Session 目標
 
-完成 #10／#12 的 review 與合併，使 #2 CLI 具備可整合的 Session／Config 依賴。
+#3 的 symlink escape 測試已於 Developer Mode 環境驗證通過，AC-6 全數完成；開始 #4 stale-read 防護。
 
 ## 優先行動
 
-1. Review draft PR #16（Session）與 #17（Config），確認後轉為 ready 並依序合併。
-2. 兩個依賴合併後更新本機 `main`，再從新功能分支實作 #2 的 CLI／TTY 契約。
-3. 另行處理未追蹤規格文件與 §15.8 Open Questions；不得把待確認內容當成已裁決決策。
+1. `go test -v ./internal/workspace` 已在 Developer Mode 環境完整執行，8 個測試（含 symlink escape）全數通過，AC-6 可宣稱完成。
+2. 另開工作處理 #4（F-4），以 workspace guard 為前置條件實作 stale-read 與 AC-5。
+3. Review #3 的功能分支；AC-6 驗證限制已解除，依 review 結果判定合併並關閉 Issue。
 
 ## 阻塞與待決策
 
-- #2 受 #10、#12 尚未合併阻塞；本 session 未實作 #2。
-- 前置文件缺漏：`Brunel_產品提案.md`、`ADR-001`。
-- Open Questions 尚未裁決；受影響的發布門檻不得宣稱通過。
+- AC-5 受 #4 未實作阻塞。
 
 ## 參考
 
