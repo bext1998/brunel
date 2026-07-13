@@ -4,16 +4,17 @@
 
 ## 下一個 Session 目標
 
-補齊並確認 Alpha 1 實作前置決策，使第一個可開發 Issue 具備完整依賴與驗收條件。
+完成 #10／#12 的 review 與合併，使 #2 CLI 具備可整合的 Session／Config 依賴。
 
 ## 優先行動
 
-1. 找回或建立規格引用的 `Brunel_產品提案.md` 與 `ADR-001`，確認其正式 repository 路徑。
-2. 逐項裁決 `docs/spec.md` §15.8 的 OQ-1～OQ-8，並依凍結變更程序同步規格。
-3. 執行 `maze-spec-to-issues`，依需求追蹤矩陣建立可驗收的 GitHub Issues 與結構化標籤。
+1. Review draft PR #16（Session）與 #17（Config），確認後轉為 ready 並依序合併。
+2. 兩個依賴合併後更新本機 `main`，再從新功能分支實作 #2 的 CLI／TTY 契約。
+3. 另行處理未追蹤規格文件與 §15.8 Open Questions；不得把待確認內容當成已裁決決策。
 
 ## 阻塞與待決策
 
+- #2 受 #10、#12 尚未合併阻塞；本 session 未實作 #2。
 - 前置文件缺漏：`Brunel_產品提案.md`、`ADR-001`。
 - Open Questions 尚未裁決；受影響的發布門檻不得宣稱通過。
 
