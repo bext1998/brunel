@@ -6,8 +6,9 @@
 
 ## 架構轉向
 
-- [ADR-002](docs/adr/ADR-002-pi-agent-runtime.md)（2026-08-12）：放棄零依賴單檔 exe 需求（ADR-001 硬需求 (a)、spec.md G-1），改採 Pi 作為 model-facing Agent Runtime（Route B）；ADR-001 部分 Superseded，Job Object／Workspace／Safety／PowerShell 執行器與 Go 1.25.x／Bubble Tea v2 基線仍維持 Go 實作。依據 [#24 Pi Compatibility Spike](https://github.com/bext1998/brunel/issues/24) 的 Gate 1/3/4 Pass、Gate 2 Pass（有但書）、Gate 0 Partial；Spike 分支 `agent/pi-spike-issue-24` 已 push 至遠端（不合併）。
-- 直接受影響：#8（F-7 Provider Adapter）、#9（F-8 Agent Loop/EventSink/context）需重新檢視是否仍以 Go 自建。Route B 正式整合工作尚未拆解為 Issues：(1) 未安裝 Git Bash 的 Windows VM/runner 補測 Gate 0、(2) Taylor RPC client 的 `bash` command allowlist/lint、(3) 拆解正式整合 Issues 取代 #8/#9 原本範圍。
+- [ADR-002](docs/adr/ADR-002-pi-agent-runtime.md)（2026-08-12）：放棄零依賴單檔 exe 需求（ADR-001 硬需求 (a)、spec.md 原 G-1），改採 Pi 作為 model-facing Agent Runtime（Route B）；ADR-001 部分 Superseded，Job Object／Workspace／Safety／PowerShell 執行器與 Go 1.25.x／Bubble Tea v2 基線仍維持 Go 實作。依據 [#24 Pi Compatibility Spike](https://github.com/bext1998/brunel/issues/24) 的 Gate 1/3/4 Pass、Gate 2 Pass（有但書）、Gate 0 Partial；Spike 分支 `agent/pi-spike-issue-24` 已 push 至遠端（不合併）。
+- `docs/spec.md` 已同步修訂至 **v1.3**：8 個工具全留 Go（經 `taylor-tools.ts` extension 暴露給 Pi）、Session 以 Brunel 自己的 `events.jsonl` 為準（Pi session 停用）、Provider 開放多家（不再限定 OpenRouter，交由 Pi 生態決定）。新增 INV-9（`internal/pirpc` 禁止送出 `bash` RPC command）、OQ-8／OQ-9。
+- 直接受影響：#8（F-7 Provider Adapter）、#9（F-8 Agent Loop/EventSink/context）需依 v1.3 §4 矩陣的新描述重新拆解為實作任務。Route B 正式整合工作尚未拆解為 Issues：(1) 未安裝 Git Bash 的 Windows VM/runner 補測 Gate 0（OQ-9）、(2) 實作 `internal/pirpc` 與 `taylor-tools.ts`、(3) 拆解正式整合 Issues 取代 #8/#9 原本範圍。
 
 ## 進行中 Issues
 
