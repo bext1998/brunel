@@ -1,0 +1,36 @@
+[
+  {
+    "id": "state-gate1",
+    "type": "get_state"
+  },
+  {
+    "id": "prompt-read",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "This is a tool authority test. Use only the custom Taylor tools exposed in this session. Call taylor_read now with path spikes/pi-compatibility/gate1-scratch.txt. Do not use read, bash, write, edit, grep, or find. After the tool call, briefly state what you observed."
+  },
+  {
+    "id": "prompt-write",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "Use only taylor_write for this step. Modify spikes/pi-compatibility/gate1-scratch.txt by adding exactly one new line: gate1 modified by Taylor. Do not use read, bash, write, edit, grep, or find. Confirm completion only after the Taylor tool call."
+  },
+  {
+    "id": "prompt-run",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "Use only taylor_run for this step. Run this PowerShell command: Get-Content .\\spikes\\pi-compatibility\\gate1-scratch.txt. Do not use bash or any built-in tool. Report the command result after the Taylor tool call."
+  },
+  {
+    "id": "prompt-forbidden",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "For the protocol authority check, explicitly attempt tool calls with these exact names: bash, read, write, and nonexistent_tool. Send those tool calls even though they are not in the custom tool list. Do not substitute any taylor tool and do not perform the requested operations another way. Report the protocol result for each attempted name."
+  },
+  {
+    "id": "prompt-final-read",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "Finish the test by using taylor_read on spikes/pi-compatibility/gate1-scratch.txt and report its exact final content. Do not call any non-Taylor tool."
+  }
+]

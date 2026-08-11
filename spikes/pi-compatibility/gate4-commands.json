@@ -1,0 +1,36 @@
+[
+  {
+    "id": "state-gate4",
+    "type": "get_state"
+  },
+  {
+    "id": "prompt-gate4-read",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "Begin a minimal coding task using only the three Taylor tools. First call taylor_read on spikes/pi-compatibility/gate4-scratch.txt and report the observed content. Do not use any built-in tool."
+  },
+  {
+    "id": "prompt-gate4-modify",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "Modify spikes/pi-compatibility/gate4-scratch.txt using taylor_write. Preserve the existing line and add exactly one line: gate4 modified through Go host. Do not use any built-in tool."
+  },
+  {
+    "id": "prompt-gate4-test",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "Run the test step through taylor_run only. Execute this PowerShell command: if ((Get-Content .\\spikes\\pi-compatibility\\gate4-scratch.txt).Count -eq 2) { Write-Output gate4-test-pass } else { Write-Error gate4-test-fail; exit 1 }. Report the result."
+  },
+  {
+    "id": "prompt-gate4-diff",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "Run the diff step through taylor_run only. Execute this PowerShell command: git diff --no-index -- .\\spikes\\pi-compatibility\\gate4-scratch.expected.txt .\\spikes\\pi-compatibility\\gate4-scratch.txt 2>&1; exit 0. Report the diff output."
+  },
+  {
+    "id": "prompt-gate4-completion",
+    "type": "prompt",
+    "waitFor": "agent_end",
+    "message": "Complete the task by calling taylor_read on spikes/pi-compatibility/gate4-scratch.txt, then report read, modify, test, diff, and completion in order. Use no built-in tools."
+  }
+]

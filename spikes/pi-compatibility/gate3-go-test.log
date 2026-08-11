@@ -1,0 +1,8 @@
+=== RUN   TestPiSurrogateHelper
+--- PASS: TestPiSurrogateHelper (0.00s)
+=== RUN   TestPiAbortDoesNotOwnGoJob
+--- PASS: TestPiAbortDoesNotOwnGoJob (2.60s)
+=== RUN   TestPiCrashDoesNotOwnGoJob
+--- PASS: TestPiCrashDoesNotOwnGoJob (2.89s)
+PASS
+ok  	github.com/bext1998/brunel/spikes/pi-compatibility/cmd/taylorrun	5.894s

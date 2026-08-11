@@ -1,0 +1,3 @@
+{"timestamp":"2026-08-11T16:34:12.284Z","direction":"out","message":{"id":"bash-nbt","type":"bash","command":"echo gate2"}}
+{"timestamp":"2026-08-11T16:34:13.718Z","direction":"in","message":{"type":"bash_execution_update","id":"bash-nbt","delta":"gate2\n"}}
+{"timestamp":"2026-08-11T16:34:13.722Z","direction":"in","message":{"id":"bash-nbt","type":"response","command":"bash","success":true,"data":{"output":"gate2\n","exitCode":0,"cancelled":false,"truncated":false}}}

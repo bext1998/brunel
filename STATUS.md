@@ -1,13 +1,14 @@
 # Brunel — 當前狀態
 
-> 最後同步：2026-07-14
-> Branch：main
-> Working tree：乾淨，無進行中的本機變更
+> 最後同步：2026-08-12
+> Branch：agent/pi-spike-issue-24
+> Working tree：Pi Compatibility Spike 已完成，等待指揮者 QA
 
 ## 進行中 Issues
 
 - [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1)，含 #2、#4、#5、#7、#8、#9、#11、#13、#14、#15 等尚未完成的原生子項。
 - 對應 `TASK-A1-F01`／`F-3`／`F-4`／`F-6`～`F-8`／`F-10`／`F-12`～`F-14`；均標記為 `priority: P1` 並指派給 `bext1998`。
+- [#24 Pi Compatibility Spike](https://github.com/bext1998/brunel/issues/24) 已在隔離 branch `agent/pi-spike-issue-24` 完成實作與驗證，Gate 0 為 Partial，其餘 Gate 1～4 通過，等待 QA 與決策。
 
 ## 阻塞 Issues
 
