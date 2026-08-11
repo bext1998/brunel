@@ -9,7 +9,7 @@
 **適用對象**：實作工程師、AI 代理（Claude Code / Codex）、規格審查者
 
 **技術環境**：Go 1.25.x、零 CGO、靜態編譯、Windows x64、PowerShell 7（`pwsh`）
-**前置文件**：`docs/Brunel_產品提案.md`、`docs/adr/ADR-001-runtime-language.md`
+**前置文件**：`docs/Brunel_產品提案.md`、`docs/adr/ADR-001-runtime-language.md`、`docs/adr/ADR-002-pi-agent-runtime.md`
 
 ---
 
@@ -40,7 +40,7 @@ Brunel 與 Taylor、Watt 工程上完全獨立，不 import、偵測、呼叫或
 
 ### 2.1 Goals
 
-- **G-1**：乾淨 Windows x64 環境下載單一 `brunel.exe` 即可執行，無需預裝 Go 或 Node.js。
+- **G-1**［待 ADR-002 後續修訂］：原文為「乾淨 Windows x64 環境下載單一 `brunel.exe` 即可執行，無需預裝 Go 或 Node.js」。[ADR-002](adr/ADR-002-pi-agent-runtime.md)（2026-08-12）已放棄零依賴單檔 exe 需求，改採 Pi（Node.js 執行環境）作為 model-facing Agent Runtime；本條目字面文字與該決策直接衝突，正式修訂文字（含使用者需另外安裝 Node.js/npm 與 Git for Windows 的揭露方式）留待 Route B 正式整合時一併處理，不在本次文件同步範圍內。
 - **G-2**：模型可在固定 workspace 內使用 8 個內建工具完成理解、修改與驗證。
 - **G-3**：一般開發操作不打斷使用者；明顯風險操作會逐次確認。
 - **G-4**：互動模式以薄型 TUI 顯示對話、工具活動、用量、狀態與批准請求。
@@ -511,6 +511,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | 版本 | 日期 | 修改內容 | 作者 |
 |---|---|---|---|
+| — | 2026-08-12 | [ADR-002](adr/ADR-002-pi-agent-runtime.md) 記錄放棄零依賴單檔 exe（G-1 原文與 Node.js 需求衝突）、改採 Pi 作為 model-facing Agent Runtime 的決策；本次僅同步 G-1 標註與前置文件引用，§5（架構與公開介面）、§9（Contract）等章節的正式修訂留待 Route B 整合設計完成後再提出獨立版本修訂。 | 使用者裁決 + Claude |
 | v1.2 | 2026-07-14 | 將安全定位收斂為事故防護與 AUTO／CONFIRM；加入 Go 1.25 + Bubble Tea v2 薄型 TUI；CompletionReport 改記客觀事實；benchmark runner 移回 Alpha 4；合併重複工程契約為單一來源。 | Codex + 使用者裁決 |
 | v1.1 | 2026-07-13 | 補入工程契約、需求矩陣與測試計畫。 | Codex |
 | v1.0 | 2026-07-13 | 初版。 | Maze + Claude |

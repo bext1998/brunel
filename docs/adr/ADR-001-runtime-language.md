@@ -2,7 +2,7 @@
 
 ## 狀態
 
-Accepted（2026-07-14 修訂工具鏈基線）
+Accepted（2026-07-14 修訂工具鏈基線）；硬需求 (a) 已於 2026-08-12 由 [ADR-002](ADR-002-pi-agent-runtime.md) 取代（放棄零依賴單檔 exe，改採 Pi 作為 model-facing Agent Runtime）。硬需求 (b)（Job Object）與本文件理由 1、4 的程序控制部分維持有效，Go 仍為 Workspace／Safety／PowerShell 執行器的實作語言，Go 1.25.x／Bubble Tea v2 基線不受影響。
 
 ## 日期
 
