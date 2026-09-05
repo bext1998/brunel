@@ -1,7 +1,7 @@
 # Brunel — 當前狀態
 
-> 最後同步：2026-08-12
-> Branch：main
+> 最後同步：2026-09-05
+> Branch：maze/2026-09-05-c207b9
 > Working tree：乾淨
 
 ## 架構轉向
@@ -12,7 +12,8 @@
 
 ## 進行中 Issues
 
-- [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#5、#7、#8、#9、#11、#14、#22。**#8、#9 範圍受 ADR-002 影響，待重新檢視。**
+- [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#7、#8、#9、#11、#14、#22。**#8、#9 範圍受 ADR-002 影響，待重新檢視。**
+- [#5 F-4：實作 stale-read hash 防護與原子寫入](https://github.com/bext1998/brunel/issues/5) 已在 `internal/filetools`（新套件）完成實作並等待 review：全檔 SHA-256、`create_file`／`write_file`／`apply_patch` 的 `expected_hash` 前置條件、精確 hunk 套用（無自動 merge／模糊比對）與暫存檔＋原子替換寫入；stale hash、patch conflict、overlap、缺失目標與失敗寫入皆保留原檔且無副作用。尚未接上 `workspace.Workspace`（該接線與 §5.4 工具 schema 一併屬於 #4，仍 blocked by #7）。
 - [#22 F-13：建立 Alpha 1 三類 E2E fixtures](https://github.com/bext1998/brunel/issues/22) 已新增；#2、#7、#9、#14 已分別同步薄型 TUI、事故防護、EventSink 與客觀 CompletionReport 範圍。
 
 ## 阻塞 Issues
@@ -23,7 +24,7 @@
 
 ## 等待 Review
 
-- 無。
+- #5（F-4 stale-read hash 防護與原子寫入）：`internal/filetools` 實作，分支 `maze/2026-09-05-c207b9`。
 
 ## 等待 Merge
 
@@ -52,6 +53,6 @@
 
 ## 已知驗證限制
 
-- v1.2 AC-7 的 stale-read 防護屬 #5（F-4），尚未實作。
+- v1.2 AC-7 的 stale-read 防護（#5）已在 `internal/filetools` 完成核心邏輯與單元測試，但尚未經由 #4 接上實際 `workspace.Workspace` 與 8 工具 schema 做 E2E／Integration 驗證（AC-7 正式判定需待 #4／#7 完成後的閉環測試）。
 - `internal/exec` 的 Timeout／MaxProcesses／MaxMemoryBytes／MaxOutputBytes 一律由呼叫端明確提供，套件本身不內建預設值；Alpha 1 不再需要 benchmark 硬性預算。
 - repository 的 `go.mod` 目前仍是 Go 1.22；本次依約不修改程式碼或依賴，後續實作 TUI 前需另行同步至 Go 1.25.x。
