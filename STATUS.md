@@ -24,7 +24,7 @@
 
 ## 等待 Review
 
-- #5（F-4 stale-read hash 防護與原子寫入）：`internal/filetools` 實作，分支 `maze/2026-09-05-c207b9`。
+- [PR #26](https://github.com/bext1998/brunel/pull/26)（#5 F-4 stale-read hash 防護與原子寫入）：`internal/filetools` 實作，分支 `maze/2026-09-05-c207b9`。
 
 ## 等待 Merge
 
