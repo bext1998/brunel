@@ -1,23 +1,25 @@
 # Brunel — 下一步行動
 
-> 最後同步：2026-09-05
+> 最後同步：2026-09-08
 
 ## 下一個 Session 目標
 
-#5（F-4 stale-read hash 防護與原子寫入）的核心邏輯已在 `internal/filetools` 完成並通過單元測試，PR 待 review／合併。下一個 Session 應先確認 #5 的 review 結果並視需要修正，其餘重點仍是把 ADR-002 的架構轉向拆解成可執行的 GitHub Issues，並釐清 #8（F-7 Provider）／#9（F-8 Agent Loop）哪些部分仍要做、哪些改由 Pi 承接。
+ADR-002 的架構轉向已拆解完成：#8／#9 依 v1.3 §4 矩陣改標題與範圍，並拆出 #29（`taylor-tools.ts` extension 與 `brunel.exe --taylor-tool` 派工）與 #30（INV-9 `bash` command 禁令與 CI lint）。`docs/spec.md` §5／§9 的 Route B 修訂已在 `7e9e01e`（v1.3）完成。下一步回到 Alpha 1 實作前線，優先推進沒有開放阻塞的 #7、#8、#30（#5 已在 PR #26 review 中）。
 
 ## 優先行動
 
-1. 追蹤 #5 的 PR review：處理任何 review 意見；合併後同步關閉 #5 並更新 STATUS.md／NEXT_ACTION.md。
-2. 之後處理 #7 的 AUTO／CONFIRM 安全入口（目前唯一無相依阻塞的正式子項）；#4（F-3 工具，需接上 `internal/filetools` 與 `workspace.Workspace`）與 #2（F-1 CLI/TUI）的相依阻塞待 #7 解除後再排。
-3. 用 `maze-spec-to-issues` 或等效流程，把 ADR-002 的「後續需要」拆成具體 Issues：(a) 未安裝 Git Bash 的 Windows VM/runner 補測 Gate 0、(b) Taylor RPC client 的 `bash` command allowlist/lint 防線設計與實作、(c) Route B 正式整合（取代 #8/#9 原本的 Provider Adapter / Agent Loop 範圍）。
-4. 檢視 `docs/spec.md` §5（架構與公開介面）、§9（Contract），依 ADR-002 修訂範圍（哪些改由 Pi 提供、哪些仍需 Go 自建的 Taylor tools 邊界），完成後再排入 #8/#9 後續工作。
-5. 規劃 #2 前將 Go module 基線由 1.22 同步至 1.25.x，並引入 Bubble Tea v2；此項需另行實作授權，且與 Route B 無關（Host 層仍是 Go）。
+1. 實作 #7（F-6 AUTO／CONFIRM 事故防護與 Approver）：無阻塞，且是 #2／#4／#9 的共同前置，優先解除。依 spec §5.2、§6、§9～§14。
+2. 收尾 #5（F-4 stale-read）：核心實作已在 `internal/filetools` 完成、PR #26 review 中（全檔 SHA-256、`expected_hash` 前置條件、精確 hunk 套用、暫存檔＋原子替換）；跟進 review 意見併入。實際接上 `workspace.Workspace` 與 §5.4 工具 schema 屬 #4。
+3. 實作 #30（INV-9）：無阻塞、範圍小。`internal/pirpc` 原始碼禁止 `{"type":"bash"}` literal 的 lint／AST 檢查，接進 `.github/workflows/ci.yml`，補 `TC-PIRPC-001`。
+4. 實作 #8（F-7）：無阻塞（#12 已完成）。透傳 `--provider`／`--model` 給 Pi RPC 啟動參數、Credential Manager 憑證注入 Pi 子行程、轉譯 Pi 回報的 provider 層錯誤；不自行 SSE／probe／retry。
+5. 相依鏈：#7 完成後解除 #4（F-3 8 工具）；#4 完成後解除 #29。#9（Pi RPC 橋接）待 #4／#8／#29／#30 全部完成才排入；#2 待 #7／#9，#11 待 #9，#14 待 #4／#9，#22 待多項。
+6. 規劃 #2 前將 Go module 基線由 1.22 同步至 1.25.x 並引入 Bubble Tea v2；此項需另行實作授權，與 Route B 無關（Host 層仍是 Go）。
 
 ## 阻塞與待決策
 
-- Route B 正式整合範圍尚未拆成 Issues；`docs/spec.md` §5／§9 的詳細內容需在拆 Issue 前先決定去留。
-- 無 Alpha 1 硬阻塞；`docs/spec.md` §16 的 Open Questions 依各自裁決前行為處理。
+- 無 Alpha 1 硬阻塞；`docs/spec.md` §5／§9 的 Route B 修訂已於 v1.3 完成。
+- Gate 0（物理上無 Git Bash 的環境）補測：依使用者裁決不另建 Issue，維持 ADR-002 現況——Git for Windows 為已文件化安裝依賴，spec OQ-9 視為接受風險、不驗證。
+- OQ-8（Pi 版本釘選與升級前 Gate 重跑政策）尚未建 Issue；升級 Pi 版本前需重跑對應 Gate 等價測試。spec §16 其餘 Open Questions 依各自裁決前行為處理。
 
 ## 參考
 
