@@ -4,6 +4,18 @@
 
 ## 決策紀錄
 
+### 2026-09-08 — 接受檔案寫入的殘餘 rename 競態為 Alpha 1 best-effort
+
+**決策**：#5（PR #26，`internal/filetools`）的 stale-read 防護採「`expected_hash` 前置條件 + 鎖內重驗 hash + 暫存檔原子換檔」。此設計無法完全消除「外部程序在鎖內重驗與換檔之間以 rename 蓋掉目標檔」的 sub-millisecond 競態（OS byte-range lock 不擋 rename、POSIX flock 為 advisory）。Alpha 1 接受此殘餘競態為 best-effort，不再投入完整修法。`docs/spec.md` §10 INV-6 標註為 best-effort，新增 §16 OQ-10，規格提升為 v1.3.1。
+
+**原因**：命中條件嚴苛（需外部人為編輯剛好落在微秒級視窗），blast radius 僅為單次未提交併發編輯遺失、非檔案損毀、非累積、git 可救；未破壞任何 `[FROZEN]` 契約，AC-7 仍通過。完整修法（改 in-place rewrite）會失去寫入的 crash 原子性，得不償失；整個生態（git、編輯器、同類 agent 工具）都容忍此等級殘餘。Alpha 1 定位本就是「事故防護、非 sandbox」。
+
+**影響範圍**：`docs/spec.md` §10 INV-6／§16 OQ-10／§18；`internal/filetools`（程式碼註解已誠實揭露）。Alpha 3「單一 writer」時重評——屆時若 Brunel 內部出現併發 writer，需加 path-keyed 序列化層。
+
+**狀態**：確認
+
+---
+
 ### 2026-09-08 — ADR-002 後續拆解為 Issues；Gate 0 補測不另建、視為接受風險
 
 **決策**：將 ADR-002「後續需要」拆解為 GitHub Issues。(2)(3) 已落地：#8（F-7）／#9（F-8）依 v1.3 §4 矩陣改標題與範圍，並由 #9 拆出 [#29](https://github.com/bext1998/brunel/issues/29)（`taylor-tools.ts` extension 與 `brunel.exe --taylor-tool` 派工）與 [#30](https://github.com/bext1998/brunel/issues/30)（INV-9 `bash` command 禁令與 CI lint／AST 檢查），皆為 #1 sub-issue、assignee `bext1998`。(1)「未安裝 Git Bash 的環境補測 Gate 0」**不另建 Issue**，維持 ADR-002 現況：Git for Windows 為與 `pwsh` 7 同級的已文件化安裝依賴，spec.md OQ-9 視為接受風險、不做驗證。OQ-8（Pi 版本釘選政策）暫緩，尚未建 Issue。

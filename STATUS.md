@@ -14,20 +14,19 @@
 ## 進行中 Issues
 
 - [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#7、#8、#9、#11、#14、#22、#29、#30。#8、#9 已依 ADR-002／v1.3 重新拆解完成（見「架構轉向」）。
-- [#5 F-4：實作 stale-read hash 防護與原子寫入](https://github.com/bext1998/brunel/issues/5) 已在 `internal/filetools`（新套件）完成核心實作並開 PR #26 等待 review：全檔 SHA-256、`create_file`／`write_file`／`apply_patch` 的 `expected_hash` 前置條件、精確 hunk 套用（無自動 merge／模糊比對）與暫存檔＋原子替換寫入；stale hash、patch conflict、overlap、缺失目標與失敗寫入皆保留原檔且無副作用。尚未接上 `workspace.Workspace`（該接線與 §5.4 工具 schema 一併屬於 #4，仍 blocked by #7）。
-- [#7 F-6：實作 AUTO／CONFIRM 事故防護與 Approver](https://github.com/bext1998/brunel/issues/7) 已在 `internal/safety`（新套件）完成核心實作並開 PR #27 等待 review：單一安全決策入口 `Gate.Decide`、`Risk`／`ApprovalPrompt`／`Approver`（依 spec.md §5.2／§6.2 FROZEN 定義）、readonly 模式的確定性拒絕（不呼叫 Approver）、無 TTY 時 `E_APPROVAL_REQUIRED_NO_TTY` 快速失敗、`run_powershell` 針對 §6.2 六類代表命令（強制／遞迴刪除、清空內容、大量移動覆寫、git 狀態變更、安裝或更新套件、網路傳輸、背景程序／job、workspace 外絕對路徑）的字串／token 分類。尚未接上 `internal/exec`／`internal/filetools`／`workspace.Workspace` 或實際 TUI／純文字 Approver 實作（該接線屬 #4、#2，仍待 #7 合併後才能排入）。
+- [#5 F-4：實作 stale-read hash 防護與原子寫入](https://github.com/bext1998/brunel/issues/5) 核心實作已透過 PR #26 合併至 `main`（`internal/filetools`）：全檔 SHA-256、`create_file`／`write_file`／`apply_patch` 的 `expected_hash` 前置條件、精確 hunk 套用（無自動 merge／模糊比對）、暫存檔＋鎖內重驗＋原子換檔；stale hash、patch conflict、overlap、缺失目標、失敗寫入與鎖衝突皆保留原檔且有界失敗。尚未接上 `workspace.Workspace`（該接線與 §5.4 工具 schema 一併屬於 #4）。INV-6 為 best-effort（見 spec §10／OQ-10）。
+- [#7 F-6：實作 AUTO／CONFIRM 事故防護與 Approver](https://github.com/bext1998/brunel/issues/7) 核心實作已透過 PR #27 合併至 `main`（`internal/safety`）：單一安全決策入口 `Gate.Decide`、`Risk`／`ApprovalPrompt`／`Approver`（依 spec.md §5.2／§6.2 FROZEN 定義）、readonly 模式的確定性拒絕（不呼叫 Approver）、無 TTY 時 `E_APPROVAL_REQUIRED_NO_TTY` 快速失敗、`run_powershell` 針對 §6.2 六類代表命令（強制／遞迴刪除、清空內容、大量移動覆寫、git 狀態變更、安裝或更新套件、網路傳輸、背景程序／job、workspace 外絕對路徑）的字串／token 分類。尚未接上 `internal/exec`／`internal/filetools`／`workspace.Workspace` 或實際 TUI／純文字 Approver 實作（該接線屬 #4、#2）。
 - [#22 F-13：建立 Alpha 1 三類 E2E fixtures](https://github.com/bext1998/brunel/issues/22) 已新增；#2、#7、#9、#14 已分別同步薄型 TUI、事故防護、EventSink 與客觀 CompletionReport 範圍。
 
 ## 阻塞 Issues
 
 - 無規格決策阻塞 Alpha 1 實作。`docs/spec.md` §5／§9 的 Route B 修訂已於 v1.3（`7e9e01e`）完成。
 - #13（完成證據狀態機）與 #15（Smoke Benchmark Runner）已依 v1.2 以 `not planned` 關閉。
-- 可執行前線（無開放阻塞）：#8、#30；#5 已在 PR #26 review 中、#7 已在 PR #27 review 中。#4 待 #7；#29 待 #4；#9 待 #4／#8／#29／#30；#2 待 #7／#9；#11 待 #9；#14 待 #4／#9；#22 待多項。
+- 可執行前線（無開放阻塞）：#4、#8、#30。#5（F-4）／#7（F-6）核心已合併，wiring 屬 #4；#29 待 #4；#9 待 #4／#8／#29／#30；#2 待 #9；#11 待 #9；#14 待 #4／#9；#22 待多項。
 
 ## 等待 Review
 
-- [PR #26](https://github.com/bext1998/brunel/pull/26)（#5 F-4 stale-read hash 防護與原子寫入）：`internal/filetools` 實作，分支 `maze/2026-09-05-c207b9`。
-- [PR #27](https://github.com/bext1998/brunel/pull/27)（#7 F-6 AUTO／CONFIRM 事故防護與 Approver）：`internal/safety` 實作，分支 `maze/2026-09-07-b352e0`。
+- 無。
 
 ## 等待 Merge
 
@@ -35,10 +34,13 @@
 
 ## 已合併待關閉
 
-- 無。
+- #5（F-4 stale-read，`internal/filetools`）核心經 PR #26 合併至 `main`；wiring／E2E 屬 #4，Issue 關閉待定。
+- #7（F-6 AUTO／CONFIRM，`internal/safety`）核心經 PR #27 合併至 `main`；wiring／整合測試屬 #4／#2，Issue 關閉待定。
 
 ## 最近完成
 
+- PR #26（#5 F-4 stale-read，`internal/filetools`）與 PR #27（#7 F-6 AUTO／CONFIRM，`internal/safety`）已合併至 `main`；均經多輪 review 修正（#26：非 Windows no-overwrite install、有界非阻塞鎖、誠實化 INV-6；#27：分隔符旁路、路徑正規化、覆寫／大量移動命令形式）。CI 於 `windows-latest` + `ubuntu-latest` 矩陣通過。
+- `docs/spec.md` 提升為 **v1.3.1**：§10 INV-6 標註為 best-effort、新增 §16 OQ-10（檔案寫入的 sub-millisecond rename 競態，Alpha 1 接受為 best-effort，Alpha 3「單一 writer」時重評）。
 - ADR-002 架構轉向拆解為 Issues（`maze-spec-to-issues`）：#8／#9 改標題與範圍、新增 #29／#30（皆由 #9 拆出、掛在 #1 下、assignee `bext1998`）；Gate 0 補測依使用者裁決不另建、CAND-1（OQ-8）暫緩；無新標籤。
 - [ADR-002](docs/adr/ADR-002-pi-agent-runtime.md) 確認：完成 Issue #24 Pi Compatibility Spike（5 Gate，證據存於已 push 的 `agent/pi-spike-issue-24` 分支）並據此裁決放棄零依賴需求、轉向 Route B。
 - PR #23（v1.2 規格與相關文件對齊）已合併至 `main`。
@@ -57,7 +59,8 @@
 
 ## 已知驗證限制
 
-- v1.2 AC-7 的 stale-read 防護（#5）已在 `internal/filetools` 完成核心邏輯與單元測試（PR #26），但尚未經由 #4 接上實際 `workspace.Workspace` 與 8 工具 schema 做 E2E／Integration 驗證（AC-7 正式判定需待 #4／#7 完成後的閉環測試）。
-- AC-9～AC-11（AUTO 體驗、CONFIRM 分類、readonly／無 TTY）對應的 #7 已完成 `internal/safety` 核心決策邏輯與單元測試（PR #27），但正式判定需待 #4（工具接線）、#2（TUI／純文字 Approver 實作）完成後的整合測試。
+- v1.2 AC-7 的 stale-read 防護（#5）核心邏輯與單元測試已合併（PR #26），但尚未經由 #4 接上實際 `workspace.Workspace` 與 8 工具 schema 做 E2E／Integration 驗證（AC-7 正式判定需待 #4 的閉環測試）。
+- INV-6 為 best-effort（spec v1.3.1／OQ-10）：`internal/filetools` 無法完全消除鎖內重驗與原子換檔之間的 sub-millisecond rename 競態；Alpha 1 接受（併發寫入者僅外部人為編輯，Brunel 內部無併發 writer），Alpha 3「單一 writer」時重評。
+- AC-9～AC-11（AUTO 體驗、CONFIRM 分類、readonly／無 TTY）對應的 #7 核心決策邏輯與單元測試已合併（PR #27），但正式判定需待 #4（工具接線）、#2（TUI／純文字 Approver 實作）完成後的整合測試。
 - `internal/exec` 的 Timeout／MaxProcesses／MaxMemoryBytes／MaxOutputBytes 一律由呼叫端明確提供，套件本身不內建預設值；Alpha 1 不再需要 benchmark 硬性預算。
 - repository 的 `go.mod` 目前仍是 Go 1.22；本次依約不修改程式碼或依賴，後續實作 TUI 前需另行同步至 Go 1.25.x。
