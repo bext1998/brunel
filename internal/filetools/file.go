@@ -1,6 +1,7 @@
 package filetools
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,9 +78,12 @@ func clampRange(total, startLine, endLine int) (from, to int) {
 	return from, to
 }
 
-// CreateFile creates a new file at path with content. It fails, without any
-// side effect, if the file already exists - create_file never overwrites
-// existing content.
+// CreateFile creates a new file at path with content. It fails, without
+// any side effect, if the file already exists - create_file never
+// overwrites existing content. The content is staged in a temporary file
+// in the destination directory and synced before being atomically
+// installed with no-overwrite semantics, so an interrupted or crashed
+// create_file never leaves a partial file at the target path.
 func CreateFile(r Resolver, path, content string) (string, error) {
 	abs, err := r.Resolve(path)
 	if err != nil {
@@ -91,26 +95,29 @@ func CreateFile(r Resolver, path, content string) (string, error) {
 		return "", codeError(ErrFileIO.Code, "cannot inspect target path", statErr)
 	}
 	data := []byte(content)
-	file, err := os.OpenFile(abs, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	dir := filepath.Dir(abs)
+	tmp, err := os.CreateTemp(dir, ".brunel-filetools-create-*")
 	if err != nil {
-		if os.IsExist(err) {
-			return "", codeError(ErrFileExists.Code, "file already exists", nil)
-		}
-		return "", codeError(ErrFileIO.Code, "cannot create file", err)
+		return "", codeError(ErrFileIO.Code, "cannot create temporary file", err)
 	}
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		_ = os.Remove(abs)
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
 		return "", codeError(ErrFileIO.Code, "cannot write new file", err)
 	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		_ = os.Remove(abs)
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
 		return "", codeError(ErrFileIO.Code, "cannot sync new file", err)
 	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(abs)
+	if err := tmp.Close(); err != nil {
 		return "", codeError(ErrFileIO.Code, "cannot close new file", err)
+	}
+	if err := installNewFile(tmpName, abs); err != nil {
+		if isAlreadyExists(err) {
+			return "", codeError(ErrFileExists.Code, "file already exists", nil)
+		}
+		return "", codeError(ErrFileIO.Code, "cannot install new file", err)
 	}
 	return hashBytes(data), nil
 }
@@ -160,11 +167,14 @@ func readExistingFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-// atomicReplace writes data to a temporary file next to target, re-checks
-// target's hash immediately before the swap to narrow the stale-write race
-// as much as a single-process, non-transactional filesystem allows, and
-// only then atomically replaces target. On any failure the temporary file
-// is removed and target is left byte-for-byte unchanged.
+// atomicReplace writes data to a temporary file next to target, then makes
+// the stale-hash check and the replacement indivisible: it opens the
+// target, takes an exclusive whole-file lock, re-reads and re-checks the
+// hash *inside* the lock, and swaps the file in *inside* the same lock.
+// An external writer that modifies the target after validation therefore
+// blocks on the lock until the swap is done - it can no longer slip a new
+// version between the check and the replace (INV-6). On any failure the
+// temporary file is removed and target is left byte-for-byte unchanged.
 func atomicReplace(target string, data []byte, expectedHash string) error {
 	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, ".brunel-filetools-*")
@@ -184,8 +194,29 @@ func atomicReplace(target string, data []byte, expectedHash string) error {
 	if err := tmp.Close(); err != nil {
 		return codeError(ErrFileIO.Code, "cannot close temporary file", err)
 	}
+
+	// Hold an exclusive lock on the target across the final hash check
+	// and the swap so the two cannot be interleaved with an external
+	// write. The handle is opened with full sharing (including
+	// FILE_SHARE_DELETE on Windows) so the rename-based swap still works
+	// while the lock is held.
+	locked, err := openLockable(target)
+	if err != nil {
+		return codeError(ErrFileIO.Code, "cannot open file for locked replace", err)
+	}
+	defer locked.Close()
+	if err := lockFileExclusive(locked); err != nil {
+		return codeError(ErrFileIO.Code, "cannot lock file for replace", err)
+	}
+	defer unlockFile(locked)
+
 	if expectedHash != "" {
-		latest, err := os.ReadFile(target)
+		// Read through the locked handle itself: a second handle's
+		// reads are blocked by our own exclusive lock on Windows.
+		if _, err := locked.Seek(0, 0); err != nil {
+			return codeError(ErrFileIO.Code, "cannot seek file before replace", err)
+		}
+		latest, err := io.ReadAll(locked)
 		if err != nil {
 			return codeError(ErrFileIO.Code, "cannot re-read file before replace", err)
 		}

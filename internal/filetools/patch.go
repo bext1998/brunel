@@ -69,7 +69,8 @@ func ApplyPatch(r Resolver, path, expectedHash string, hunks []Hunk) (string, er
 // insertion point - all without ever reading file content, so a malformed
 // request never triggers the context-matching pass in applyHunks.
 func validateHunks(hunks []Hunk, total int) error {
-	prevEnd := 0 // 0 means "before line 1": no line has been claimed yet
+	prevEnd := 0     // 0 means "before line 1": no line has been claimed yet
+	prevStart := 0   // StartLine of the previous hunk (sorted order)
 	for _, h := range hunks {
 		if h.StartLine < 1 || h.StartLine > total+1 {
 			return codeError(ErrInvalidArgument.Code, fmt.Sprintf("hunk start_line %d is out of range", h.StartLine), nil)
@@ -84,7 +85,15 @@ func validateHunks(hunks []Hunk, total int) error {
 		if h.StartLine <= prevEnd {
 			return codeError(ErrInvalidArgument.Code, "hunks overlap or share an insertion point", nil)
 		}
+		// Two hunks editing at the same start line - including two pure
+		// insertions before the same line, or an insertion plus a
+		// replacement of that line - are ambiguous regardless of sort
+		// order, so reject them deterministically.
+		if h.StartLine == prevStart {
+			return codeError(ErrInvalidArgument.Code, "hunks overlap or share an insertion point", nil)
+		}
 		prevEnd = h.EndLine
+		prevStart = h.StartLine
 	}
 	return nil
 }
@@ -103,6 +112,14 @@ func applyHunks(lines []rawLine, hunks []Hunk) ([]rawLine, error) {
 			result = append(result, lines[cursor-1])
 			cursor++
 		}
+		// When new lines are appended after a final line that had no
+		// trailing newline, the copied final line needs a terminator so
+		// the inserted lines start on their own line instead of being
+		// glued onto it (e.g. "one" + EOF insert "two" must produce
+		// "one\ntwo\n", not "onetwo\n").
+		if noTrailingNewline && len(result) > 0 && len(h.NewLines) > 0 && result[len(result)-1].term == "" {
+			result[len(result)-1].term = term
+		}
 		for i, want := range h.OldLines {
 			actual := lines[h.StartLine-1+i].text
 			if actual != want {
@@ -113,8 +130,10 @@ func applyHunks(lines []rawLine, hunks []Hunk) ([]rawLine, error) {
 			result = append(result, rawLine{text: text, term: term})
 		}
 		// Preserve a file that had no trailing newline when the last hunk
-		// replaces through the true end of file.
-		if hi == len(hunks)-1 && h.EndLine == len(lines) && noTrailingNewline && len(h.NewLines) > 0 {
+		// replaces through the true end of file. A pure insertion at EOF
+		// (EndLine == StartLine-1) does not consume the final line, so the
+		// inserted lines keep normal terminators.
+		if hi == len(hunks)-1 && h.EndLine >= h.StartLine && h.EndLine == len(lines) && noTrailingNewline && len(h.NewLines) > 0 {
 			result[len(result)-1].term = ""
 		}
 		cursor = h.EndLine + 1

@@ -254,3 +254,92 @@ func TestApplyPatchRejectsMissingHunks(t *testing.T) {
 		t.Fatalf("ErrorCode() = %q, want %q (err=%v)", ErrorCode(err), ErrInvalidArgument.Code, err)
 	}
 }
+
+func TestApplyPatchEOFInsertAfterUnterminatedFinalLine(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFixture(t, dir, "a.txt", "one") // no trailing newline
+	r := fakeResolver{root: dir}
+	read, err := ReadFile(r, "a.txt", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert at len(lines)+1 == 2: the unterminated final line must gain a
+	// terminator so the inserted line starts on its own line.
+	if _, err := ApplyPatch(r, "a.txt", read.Hash, []Hunk{
+		{StartLine: 2, EndLine: 1, OldLines: nil, NewLines: []string{"two"}},
+	}); err != nil {
+		t.Fatalf("ApplyPatch() error = %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "one\ntwo\n" {
+		t.Fatalf("content = %q, want %q", content, "one\ntwo\n")
+	}
+}
+
+func TestApplyPatchEOFInsertAfterUnterminatedFinalLineCRLF(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFixture(t, dir, "a.txt", "one\r\ntwo") // CRLF file, no trailing newline
+	r := fakeResolver{root: dir}
+	read, err := ReadFile(r, "a.txt", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ApplyPatch(r, "a.txt", read.Hash, []Hunk{
+		{StartLine: 3, EndLine: 2, OldLines: nil, NewLines: []string{"three"}},
+	}); err != nil {
+		t.Fatalf("ApplyPatch() error = %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "one\r\ntwo\r\nthree\r\n" {
+		t.Fatalf("content = %q, want %q", content, "one\r\ntwo\r\nthree\r\n")
+	}
+}
+
+func TestApplyPatchRejectsTwoInsertionsAtSameStartLine(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "a.txt", "one\ntwo\n")
+	r := fakeResolver{root: dir}
+	read, err := ReadFile(r, "a.txt", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Two pure insertions before line 2 share StartLine == 2; the second
+	// must be rejected deterministically instead of being accepted.
+	_, err = ApplyPatch(r, "a.txt", read.Hash, []Hunk{
+		{StartLine: 2, EndLine: 1, OldLines: nil, NewLines: []string{"first"}},
+		{StartLine: 2, EndLine: 1, OldLines: nil, NewLines: []string{"second"}},
+	})
+	if ErrorCode(err) != ErrInvalidArgument.Code {
+		t.Fatalf("ErrorCode() = %q, want %q (err=%v)", ErrorCode(err), ErrInvalidArgument.Code, err)
+	}
+}
+
+func TestApplyPatchRejectsInsertionAndReplacementAtSameStartLine(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "a.txt", "one\ntwo\n")
+	r := fakeResolver{root: dir}
+	read, err := ReadFile(r, "a.txt", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// An insertion before line 2 and a replacement of line 2 share
+	// StartLine == 2; regardless of sort order the combination is
+	// ambiguous and must be rejected.
+	_, err = ApplyPatch(r, "a.txt", read.Hash, []Hunk{
+		{StartLine: 2, EndLine: 2, OldLines: []string{"two"}, NewLines: []string{"TWO"}},
+		{StartLine: 2, EndLine: 1, OldLines: nil, NewLines: []string{"inserted"}},
+	})
+	if ErrorCode(err) != ErrInvalidArgument.Code {
+		t.Fatalf("ErrorCode() = %q, want %q (err=%v)", ErrorCode(err), ErrInvalidArgument.Code, err)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestReadFileReturnsWholeFileHashAndRequestedRange(t *testing.T) {
@@ -190,5 +191,130 @@ func TestWriteFileMissingTargetReturnsNotFound(t *testing.T) {
 	r := fakeResolver{root: t.TempDir()}
 	if _, err := WriteFile(r, "missing.txt", "deadbeef", "content"); ErrorCode(err) != ErrNotFound.Code {
 		t.Fatalf("ErrorCode() = %q, want %q (err=%v)", ErrorCode(err), ErrNotFound.Code, err)
+	}
+}
+
+// CreateFile stages content in a temporary file and installs it
+// atomically; a failed create must not leave any temporary file behind in
+// the target directory.
+func TestCreateFileLeavesNoTempFileBehind(t *testing.T) {
+	dir := t.TempDir()
+	r := fakeResolver{root: dir}
+	if _, err := CreateFile(r, "new.txt", "hello"); err != nil {
+		t.Fatalf("CreateFile() error = %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "new.txt" {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("directory should contain only new.txt, got %v", names)
+	}
+}
+
+// The exclusive whole-file lock taken during the final hash check and the
+// swap must block an external writer for the duration of the replace: a
+// concurrent write attempt during a locked WriteFile must not interleave
+// between validation and replacement.
+func TestWriteFileLockBlocksExternalWriterDuringReplace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := fakeResolver{root: dir}
+	read, err := ReadFile(r, "a.txt", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Take the same exclusive lock the replace path uses, then attempt a
+	// WriteFile: while the target is externally locked, WriteFile must
+	// not be able to verify-and-swap the file - it either blocks on the
+	// lock or fails without touching the file. It must never silently
+	// replace content it could not verify.
+	locked, err := openLockable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer locked.Close()
+	if err := lockFileExclusive(locked); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := WriteFile(r, "a.txt", read.Hash, "replaced")
+		done <- err
+	}()
+
+	// Wait for the attempt to finish (blocked or failed); it must not
+	// have replaced the file while the external lock was held.
+	var writeErr error
+	select {
+	case writeErr = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteFile() neither completed nor failed while target was externally locked")
+	}
+	if writeErr == nil {
+		t.Fatal("WriteFile() succeeded while target was externally locked")
+	}
+	// Release the lock before inspecting the file: our own exclusive lock
+	// would block this read too.
+	unlockFile(locked)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "original" {
+		t.Fatalf("file was replaced despite external lock: %q", content)
+	}
+
+	// After the lock is released, the same write must succeed.
+	locked.Close()
+	if _, err := WriteFile(r, "a.txt", read.Hash, "replaced"); err != nil {
+		t.Fatalf("WriteFile() error after unlock = %v", err)
+	}
+	content, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "replaced" {
+		t.Fatalf("content = %q, want %q", content, "replaced")
+	}
+}
+
+// A stale-hash rejection must happen inside the lock and must not replace
+// the file even when the external modification races with the write.
+func TestWriteFileStaleDetectionUnderLockPreservesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := fakeResolver{root: dir}
+	read, err := ReadFile(r, "a.txt", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// External modification after the read: the locked re-check must
+	// catch it and leave the new version intact.
+	if err := os.WriteFile(path, []byte("changed externally"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteFile(r, "a.txt", read.Hash, "overwrite"); ErrorCode(err) != ErrStaleHash.Code {
+		t.Fatalf("ErrorCode() = %q, want %q (err=%v)", ErrorCode(err), ErrStaleHash.Code, err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "changed externally" {
+		t.Fatalf("file changed after rejected stale write: %q", content)
 	}
 }
