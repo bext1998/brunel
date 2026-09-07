@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Resolver resolves a workspace-relative path to an absolute path, rejecting
@@ -167,14 +168,18 @@ func readExistingFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-// atomicReplace writes data to a temporary file next to target, then makes
-// the stale-hash check and the replacement indivisible: it opens the
-// target, takes an exclusive whole-file lock, re-reads and re-checks the
-// hash *inside* the lock, and swaps the file in *inside* the same lock.
-// An external writer that modifies the target after validation therefore
-// blocks on the lock until the swap is done - it can no longer slip a new
-// version between the check and the replace (INV-6). On any failure the
-// temporary file is removed and target is left byte-for-byte unchanged.
+const (
+	lockRetryWindow   = 100 * time.Millisecond
+	lockRetryInterval = 10 * time.Millisecond
+)
+
+// atomicReplace writes data to a temporary file next to target, then takes
+// an exclusive whole-file lock while it re-reads and re-checks the hash
+// before swapping the file. This narrows the stale-write window and blocks
+// in-place writers that honour the lock, but it cannot prevent a
+// rename-based external writer from replacing target between validation and
+// the swap. On any detected failure the temporary file is removed and
+// target is left byte-for-byte unchanged.
 func atomicReplace(target string, data []byte, expectedHash string) error {
 	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, ".brunel-filetools-*")
@@ -196,16 +201,15 @@ func atomicReplace(target string, data []byte, expectedHash string) error {
 	}
 
 	// Hold an exclusive lock on the target across the final hash check
-	// and the swap so the two cannot be interleaved with an external
-	// write. The handle is opened with full sharing (including
-	// FILE_SHARE_DELETE on Windows) so the rename-based swap still works
-	// while the lock is held.
+	// and the swap. The handle permits delete sharing on Windows so the
+	// rename-based swap can proceed; that also means this is a best-effort
+	// stale-write guard, not a filesystem compare-and-swap.
 	locked, err := openLockable(target)
 	if err != nil {
 		return codeError(ErrFileIO.Code, "cannot open file for locked replace", err)
 	}
 	defer locked.Close()
-	if err := lockFileExclusive(locked); err != nil {
+	if err := lockTargetForReplace(locked); err != nil {
 		return codeError(ErrFileIO.Code, "cannot lock file for replace", err)
 	}
 	defer unlockFile(locked)
@@ -228,4 +232,22 @@ func atomicReplace(target string, data []byte, expectedHash string) error {
 		return codeError(ErrFileIO.Code, "cannot replace file", err)
 	}
 	return nil
+}
+
+// lockTargetForReplace retries a contended non-blocking lock for a bounded
+// interval. Filetools operations do not accept a context, so the bound
+// prevents an external lock from making a write_file or apply_patch hang
+// indefinitely.
+func lockTargetForReplace(f *os.File) error {
+	deadline := time.Now().Add(lockRetryWindow)
+	for {
+		err := lockFileExclusive(f)
+		if err == nil || !isLockUnavailable(err) {
+			return err
+		}
+		if !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(lockRetryInterval)
+	}
 }

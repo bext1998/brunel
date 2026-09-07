@@ -77,6 +77,33 @@ func TestCreateFileFailsWhenTargetExists(t *testing.T) {
 	}
 }
 
+// installNewFile is the final no-overwrite operation after CreateFile has
+// staged content. Exercise it directly so this test covers a file created
+// after CreateFile's initial Lstat check.
+func TestInstallNewFileDoesNotOverwriteExistingTarget(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "staged.txt")
+	target := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(source, []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := installNewFile(source, target)
+	if !isAlreadyExists(err) {
+		t.Fatalf("installNewFile() error = %v, want destination-exists error", err)
+	}
+	content, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "old" {
+		t.Fatalf("existing file changed after failed install: %q", content)
+	}
+}
+
 func TestCreateFileWritesNewFileAndReturnsMatchingHash(t *testing.T) {
 	dir := t.TempDir()
 	r := fakeResolver{root: dir}
@@ -216,11 +243,11 @@ func TestCreateFileLeavesNoTempFileBehind(t *testing.T) {
 	}
 }
 
-// The exclusive whole-file lock taken during the final hash check and the
-// swap must block an external writer for the duration of the replace: a
-// concurrent write attempt during a locked WriteFile must not interleave
-// between validation and replacement.
-func TestWriteFileLockBlocksExternalWriterDuringReplace(t *testing.T) {
+// An external lock must cause the public WriteFile API to fail rather than
+// wait without limit. Windows byte-range locks can reject the outer read
+// before WriteFile reaches lockTargetForReplace; the direct test below
+// covers that retry path on every platform.
+func TestWriteFileReturnsBoundedErrorWhenTargetIsLocked(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "a.txt")
 	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
@@ -241,31 +268,29 @@ func TestWriteFileLockBlocksExternalWriterDuringReplace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer locked.Close()
 	if err := lockFileExclusive(locked); err != nil {
+		_ = locked.Close()
 		t.Fatal(err)
 	}
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := WriteFile(r, "a.txt", read.Hash, "replaced")
-		done <- err
-	}()
-
-	// Wait for the attempt to finish (blocked or failed); it must not
-	// have replaced the file while the external lock was held.
-	var writeErr error
-	select {
-	case writeErr = <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("WriteFile() neither completed nor failed while target was externally locked")
+	release := func() {
+		if locked == nil {
+			return
+		}
+		_ = unlockFile(locked)
+		_ = locked.Close()
+		locked = nil
 	}
-	if writeErr == nil {
-		t.Fatal("WriteFile() succeeded while target was externally locked")
+	defer release()
+
+	started := time.Now()
+	_, err = WriteFile(r, "a.txt", read.Hash, "replaced")
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("WriteFile() waited %s while target was locked, want bounded failure", elapsed)
 	}
-	// Release the lock before inspecting the file: our own exclusive lock
-	// would block this read too.
-	unlockFile(locked)
+	if ErrorCode(err) != ErrFileIO.Code {
+		t.Fatalf("ErrorCode() = %q, want %q (err=%v)", ErrorCode(err), ErrFileIO.Code, err)
+	}
+	release()
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -273,9 +298,6 @@ func TestWriteFileLockBlocksExternalWriterDuringReplace(t *testing.T) {
 	if string(content) != "original" {
 		t.Fatalf("file was replaced despite external lock: %q", content)
 	}
-
-	// After the lock is released, the same write must succeed.
-	locked.Close()
 	if _, err := WriteFile(r, "a.txt", read.Hash, "replaced"); err != nil {
 		t.Fatalf("WriteFile() error after unlock = %v", err)
 	}
@@ -286,6 +308,53 @@ func TestWriteFileLockBlocksExternalWriterDuringReplace(t *testing.T) {
 	if string(content) != "replaced" {
 		t.Fatalf("content = %q, want %q", content, "replaced")
 	}
+}
+
+func TestLockTargetForReplaceReturnsBoundedErrorWhenLocked(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	held, err := openLockable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	if err := lockFileExclusive(held); err != nil {
+		t.Fatal(err)
+	}
+	heldLocked := true
+	defer func() {
+		if heldLocked {
+			_ = unlockFile(held)
+		}
+	}()
+
+	contender, err := openLockable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer contender.Close()
+
+	started := time.Now()
+	err = lockTargetForReplace(contender)
+	elapsed := time.Since(started)
+	if !isLockUnavailable(err) {
+		t.Fatalf("lockTargetForReplace() error = %v, want lock-unavailable error", err)
+	}
+	if elapsed < lockRetryWindow || elapsed > time.Second {
+		t.Fatalf("lockTargetForReplace() waited %s, want [%s, 1s]", elapsed, lockRetryWindow)
+	}
+
+	if err := unlockFile(held); err != nil {
+		t.Fatal(err)
+	}
+	heldLocked = false
+	if err := lockTargetForReplace(contender); err != nil {
+		t.Fatalf("lockTargetForReplace() after unlock error = %v", err)
+	}
+	defer unlockFile(contender)
 }
 
 // A stale-hash rejection must happen inside the lock and must not replace

@@ -3,6 +3,7 @@
 package filetools
 
 import (
+	"errors"
 	"os"
 	"syscall"
 )
@@ -13,9 +14,13 @@ func openLockable(path string) (*os.File, error) {
 	return os.Open(path)
 }
 
-// lockFileExclusive takes a blocking exclusive advisory lock on f.
+// lockFileExclusive attempts a non-blocking exclusive advisory lock on f.
 func lockFileExclusive(f *os.File) error {
-	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+}
+
+func isLockUnavailable(err error) bool {
+	return errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)
 }
 
 // unlockFile releases the lock taken by lockFileExclusive.

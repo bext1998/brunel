@@ -3,6 +3,7 @@
 package filetools
 
 import (
+	"errors"
 	"os"
 	"syscall"
 	"unsafe"
@@ -15,13 +16,15 @@ var (
 )
 
 const (
-	genericRead       = 0x80000000
-	fileShareRead     = 0x00000001
-	fileShareWrite    = 0x00000002
-	fileShareDelete   = 0x00000004
-	openExisting      = 3
-	fileAttributeNorm = 0x80
-	lockfileExclusive = 0x00000002
+	genericRead             = 0x80000000
+	fileShareRead           = 0x00000001
+	fileShareWrite          = 0x00000002
+	fileShareDelete         = 0x00000004
+	openExisting            = 3
+	fileAttributeNorm       = 0x80
+	lockfileFailImmediately = 0x00000001
+	lockfileExclusive       = 0x00000002
+	errorLockViolation      = syscall.Errno(33)
 	// lockWholeFileLow/High cover the entire file: LockFileEx over a
 	// maximal byte range is the conventional whole-file exclusive lock.
 	lockWholeFileLow  = 0xFFFFFFFF
@@ -52,12 +55,12 @@ func openLockable(path string) (*os.File, error) {
 	return os.NewFile(handle, path), nil
 }
 
-// lockFileExclusive takes a blocking exclusive whole-file lock on f.
+// lockFileExclusive attempts a non-blocking exclusive whole-file lock on f.
 func lockFileExclusive(f *os.File) error {
 	overlapped := syscall.Overlapped{}
 	result, _, callErr := lockFileEx.Call(
 		f.Fd(),
-		uintptr(lockfileExclusive),
+		uintptr(lockfileExclusive|lockfileFailImmediately),
 		0,
 		uintptr(lockWholeFileLow),
 		uintptr(lockWholeFileHigh),
@@ -67,6 +70,10 @@ func lockFileExclusive(f *os.File) error {
 		return callErr
 	}
 	return nil
+}
+
+func isLockUnavailable(err error) bool {
+	return errors.Is(err, errorLockViolation)
 }
 
 // unlockFile releases the whole-file lock taken by lockFileExclusive.
