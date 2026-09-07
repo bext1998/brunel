@@ -3,6 +3,7 @@ package safety
 import (
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // classify decides AUTO vs CONFIRM for one tool call (spec.md §6.2).
@@ -42,9 +43,10 @@ var (
 	networkCommands = map[string]bool{"invoke-webrequest": true, "invoke-restmethod": true, "iwr": true, "irm": true, "curl": true, "curl.exe": true, "wget": true}
 	backgroundVerbs = map[string]bool{"start-process": true, "start-job": true}
 
-	// Matches a Windows drive-letter absolute path or a UNC share
-	// anywhere in the command text, e.g. C:\Users\x or \\server\share.
-	reAbsoluteWindowsPath = regexp.MustCompile(`(?i)[A-Z]:\\[^\s"'|]*|\\\\[^\s"'|]+`)
+	// Matches a Windows drive-letter absolute path (either separator) or
+	// a UNC share anywhere in the command text, e.g. C:\Users\x,
+	// C:/Users/x or \\server\share.
+	reAbsoluteWindowsPath = regexp.MustCompile(`(?i)[A-Z]:[\\/][^\s"'|]*|\\\\[^\s"'|]+`)
 )
 
 // classifyPowerShell returns (reason, true) if command matches one of the
@@ -58,7 +60,16 @@ func classifyPowerShell(command, workspaceRoot string) (string, bool) {
 	if containsAny(tokens, clearVerbs) {
 		return "clears file content", true
 	}
-	if containsAny(tokens, overwriteVerbs) && tokens["-force"] {
+	if containsAny(tokens, overwriteVerbs) && (tokens["-force"] || strings.ContainsAny(command, "*?")) {
+		return "bulk move or overwrite", true
+	}
+	// A copy/move onto an existing destination overwrites it even without
+	// -Force (PowerShell Copy-Item/Move-Item replace writable existing
+	// files). We cannot know from static text whether the destination
+	// exists, so any copy-item/move-item whose destination argument names
+	// a file (not a directory glob ending in a separator) is treated as
+	// a potential overwrite and confirmed.
+	if containsAny(tokens, overwriteVerbs) && hasFileDestination(command) {
 		return "bulk move or overwrite", true
 	}
 
@@ -93,13 +104,32 @@ func classifyPowerShell(command, workspaceRoot string) (string, bool) {
 // tokenize splits command on whitespace into a lowercase token set for
 // membership checks. It is intentionally simple (no quote-aware parsing):
 // classification here is best-effort, not a PowerShell parser.
+//
+// PowerShell statement separators (`;`, `|`, `&`, and newline) are treated
+// as whitespace so that a flag glued to a separator by the shell's
+// whitespace rules (e.g. `-Recurse;` in `Remove-Item .\build -Recurse;
+// Write-Output done`) still matches its flag token. Trailing punctuation
+// (`.,;:|&`) is likewise trimmed from both ends of every token.
 func tokenize(command string) map[string]bool {
-	fields := strings.Fields(command)
-	tokens := make(map[string]bool, len(fields))
-	for _, f := range fields {
-		tokens[strings.ToLower(strings.Trim(f, `"'`))] = true
+	tokens := make(map[string]bool)
+	for _, f := range strings.FieldsFunc(command, isSeparator) {
+		t := strings.ToLower(strings.Trim(f, `"'`))
+		t = strings.Trim(t, `.,;:|&`)
+		if t != "" {
+			tokens[t] = true
+		}
 	}
 	return tokens
+}
+
+// isSeparator reports whether r separates PowerShell statements or tokens:
+// whitespace plus the statement separators `;`, `|` and `&`.
+func isSeparator(r rune) bool {
+	switch {
+	case r == ';', r == '|', r == '&', unicode.IsSpace(r):
+		return true
+	}
+	return false
 }
 
 func containsAny(tokens map[string]bool, set map[string]bool) bool {
@@ -111,6 +141,30 @@ func containsAny(tokens map[string]bool, set map[string]bool) bool {
 	return false
 }
 
+// hasFileDestination reports whether a copy-item/move-item command's
+// destination argument names a file rather than a directory. A trailing
+// path separator (e.g. `Move-Item .\a.txt .\archive\`) means "into that
+// directory", which is a rename, not an overwrite of a named file.
+// Best-effort: it inspects the last non-flag argument of the command.
+func hasFileDestination(command string) bool {
+	fields := strings.Fields(command)
+	for i := len(fields) - 1; i >= 0; i-- {
+		f := strings.Trim(fields[i], `"'`)
+		if f == "" {
+			continue
+		}
+		if strings.HasPrefix(f, "-") {
+			// Skip flags and their values conservatively: once we hit a
+			// flag scanning backwards, the remaining earlier fields are
+			// the source arguments, so there is no explicit file
+			// destination and the overwrite check does not fire.
+			return false
+		}
+		return !strings.HasSuffix(f, `\`) && !strings.HasSuffix(f, `/`)
+	}
+	return false
+}
+
 // firstOutOfWorkspaceAbsolutePath returns the first absolute Windows path
 // found in command that does not fall under workspaceRoot. An empty
 // workspaceRoot disables this check (nothing to compare against).
@@ -118,14 +172,42 @@ func firstOutOfWorkspaceAbsolutePath(command, workspaceRoot string) (string, boo
 	if strings.TrimSpace(workspaceRoot) == "" {
 		return "", false
 	}
-	root := strings.TrimRight(workspaceRoot, `\/`)
+	root := normalizeWindowsPath(workspaceRoot)
 	for _, match := range reAbsoluteWindowsPath.FindAllString(command, -1) {
-		trimmed := strings.TrimRight(match, `\/`)
-		if !isWithinRoot(root, trimmed) {
+		normalized := normalizeWindowsPath(match)
+		if !isWithinRoot(root, normalized) {
 			return match, true
 		}
 	}
 	return "", false
+}
+
+// normalizeWindowsPath canonicalizes a Windows path for containment
+// comparison: forward slashes become backslashes, and `..` segments are
+// resolved lexically so `C:\ws\..\Windows` becomes `C:\Windows`. A path
+// that escapes above a drive root (e.g. `C:\..`) is left as-is; it can
+// never be within any workspace root anyway.
+func normalizeWindowsPath(path string) string {
+	p := strings.ReplaceAll(path, `/`, `\`)
+	parts := strings.Split(strings.TrimRight(p, `\`), `\`)
+	var stack []string
+	for _, part := range parts {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			if len(stack) > 0 && stack[len(stack)-1] != ".." {
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			// Escaping above the root: keep the ".." so the path stays
+			// out-of-workspace by construction.
+			stack = append(stack, "..")
+		default:
+			stack = append(stack, part)
+		}
+	}
+	return strings.Join(stack, `\`)
 }
 
 func isWithinRoot(root, path string) bool {
