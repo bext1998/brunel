@@ -11,7 +11,14 @@ Brunel 是一個面向 Windows x64 的實驗性 coding harness，用來驗證：
 - Go 1.22（目前實作基線；Alpha 1 v1.2 目標基線為 Go 1.25.x，TUI 實作前需同步）
 - Windows x64
 - PowerShell 7 (`pwsh`)
+- Node.js/npm 與 Git for Windows（[ADR-002](docs/adr/ADR-002-pi-agent-runtime.md)：model-facing Agent Runtime 委派給 [Pi](https://github.com/earendil-works/pi)，經 `pi --mode rpc` 呼叫）
 - `CGO_ENABLED=0` 靜態編譯
+
+## Model Provider
+
+Brunel 不自行實作 provider 選擇、SSE streaming、tool-call probe 或重試邏輯——這些都委派給 Pi（`internal/pirpc`）。**實際可用的 provider／model 範圍等於使用者當下安裝的 Pi 版本所支援的範圍，會隨 Pi 版本變動，Brunel 不承諾涵蓋任何特定清單。** `--model`（可含 provider 前綴，語法依 Pi 慣例）與可選的 provider 會直接透傳給 `pi --mode rpc` 的啟動參數；Pi 回報的 provider 層錯誤（認證、額度、模型不存在、協定錯誤）會被轉譯為 Brunel 自己的錯誤碼顯示，但 Brunel 不會自行重試或覆蓋 Pi 已決定的重試／放棄行為。
+
+API key 一律優先存於 Windows Credential Manager，並在啟動 Pi 子行程時經環境變數注入（例如 `OPENROUTER_API_KEY`，比照 Pi 自己已支援的憑證機制），不會寫入任何專案設定檔。
 
 ## 開發指引
 
