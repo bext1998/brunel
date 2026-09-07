@@ -26,7 +26,7 @@
 ## 等待 Review
 
 - [PR #26](https://github.com/bext1998/brunel/pull/26)（#5 F-4 stale-read hash 防護與原子寫入）：`internal/filetools` 實作，分支 `maze/2026-09-05-c207b9`。
-- #7（F-6 AUTO／CONFIRM 事故防護與 Approver）：`internal/safety` 實作，分支 `maze/2026-09-07-b352e0`，PR 待建立。
+- [PR #27](https://github.com/bext1998/brunel/pull/27)（#7 F-6 AUTO／CONFIRM 事故防護與 Approver）：`internal/safety` 實作，分支 `maze/2026-09-07-b352e0`。
 
 ## 等待 Merge
 
