@@ -1,7 +1,7 @@
 # Brunel — 當前狀態
 
-> 最後同步：2026-08-12
-> Branch：main
+> 最後同步：2026-09-07
+> Branch：maze/2026-09-07-b352e0
 > Working tree：乾淨
 
 ## 架構轉向
@@ -13,6 +13,8 @@
 ## 進行中 Issues
 
 - [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#5、#7、#8、#9、#11、#14、#22。**#8、#9 範圍受 ADR-002 影響，待重新檢視。**
+- [#5 F-4：實作 stale-read hash 防護與原子寫入](https://github.com/bext1998/brunel/issues/5) 已在 [PR #26](https://github.com/bext1998/brunel/pull/26)（`internal/filetools`）完成實作，等待 review／合併中，暫緩處理。
+- [#7 F-6：實作 AUTO／CONFIRM 事故防護與 Approver](https://github.com/bext1998/brunel/issues/7) 已在 `internal/safety`（新套件）完成實作並等待 review：單一安全決策入口 `Gate.Decide`、`Risk`／`ApprovalPrompt`／`Approver`（依 spec.md §5.2／§6.2 FROZEN 定義）、readonly 模式的確定性拒絕（不呼叫 Approver）、無 TTY 時 `E_APPROVAL_REQUIRED_NO_TTY` 快速失敗、`run_powershell` 針對 §6.2 六類代表命令（強制／遞迴刪除、清空內容、大量移動覆寫、git 狀態變更、安裝或更新套件、網路傳輸、背景程序／job、workspace 外絕對路徑）的字串／token 分類。尚未接上 `internal/exec`／`internal/filetools`／`workspace.Workspace` 或實際 TUI／純文字 Approver 實作（該接線屬 #4、#2，仍待 #7 合併後才能排入）。
 - [#22 F-13：建立 Alpha 1 三類 E2E fixtures](https://github.com/bext1998/brunel/issues/22) 已新增；#2、#7、#9、#14 已分別同步薄型 TUI、事故防護、EventSink 與客觀 CompletionReport 範圍。
 
 ## 阻塞 Issues
@@ -23,7 +25,8 @@
 
 ## 等待 Review
 
-- 無。
+- [PR #26](https://github.com/bext1998/brunel/pull/26)（#5 F-4 stale-read hash 防護與原子寫入）：`internal/filetools` 實作，分支 `maze/2026-09-05-c207b9`。
+- #7（F-6 AUTO／CONFIRM 事故防護與 Approver）：`internal/safety` 實作，分支 `maze/2026-09-07-b352e0`，PR 待建立。
 
 ## 等待 Merge
 
@@ -52,6 +55,7 @@
 
 ## 已知驗證限制
 
-- v1.2 AC-7 的 stale-read 防護屬 #5（F-4），尚未實作。
+- v1.2 AC-7 的 stale-read 防護（#5）已完成核心邏輯與單元測試（PR #26），尚未經 #4 接上實際 workspace／8 工具 schema 做 E2E／Integration 驗證。
+- AC-9～AC-11（AUTO 體驗、CONFIRM 分類、readonly／無 TTY）對應的 #7 已完成 `internal/safety` 核心決策邏輯與單元測試，但正式判定需待 #4（工具接線）、#2（TUI／純文字 Approver 實作）完成後的整合測試。
 - `internal/exec` 的 Timeout／MaxProcesses／MaxMemoryBytes／MaxOutputBytes 一律由呼叫端明確提供，套件本身不內建預設值；Alpha 1 不再需要 benchmark 硬性預算。
 - repository 的 `go.mod` 目前仍是 Go 1.22；本次依約不修改程式碼或依賴，後續實作 TUI 前需另行同步至 Go 1.25.x。
