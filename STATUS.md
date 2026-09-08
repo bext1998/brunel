@@ -13,16 +13,17 @@
 
 ## 進行中 Issues
 
-- [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#7、#8、#9、#11、#14、#22、#29、#30。#8、#9 已依 ADR-002／v1.3 重新拆解完成（見「架構轉向」）。
+- [#1 Alpha 1：薄型 coding harness 實作追蹤](https://github.com/bext1998/brunel/issues/1) 已依 v1.2 對齊；未完成子項為 #2、#4、#7、#9、#11、#14、#22、#29、#30。#8、#9 已依 ADR-002／v1.3 重新拆解完成（見「架構轉向」）；#8 核心實作已合併（見下）。
 - [#5 F-4：實作 stale-read hash 防護與原子寫入](https://github.com/bext1998/brunel/issues/5) 核心實作已透過 PR #26 合併至 `main`（`internal/filetools`）：全檔 SHA-256、`create_file`／`write_file`／`apply_patch` 的 `expected_hash` 前置條件、精確 hunk 套用（無自動 merge／模糊比對）、暫存檔＋鎖內重驗＋原子換檔；stale hash、patch conflict、overlap、缺失目標、失敗寫入與鎖衝突皆保留原檔且有界失敗。尚未接上 `workspace.Workspace`（該接線與 §5.4 工具 schema 一併屬於 #4）。INV-6 為 best-effort（見 spec §10／OQ-10）。
 - [#7 F-6：實作 AUTO／CONFIRM 事故防護與 Approver](https://github.com/bext1998/brunel/issues/7) 核心實作已透過 PR #27 合併至 `main`（`internal/safety`）：單一安全決策入口 `Gate.Decide`、`Risk`／`ApprovalPrompt`／`Approver`（依 spec.md §5.2／§6.2 FROZEN 定義）、readonly 模式的確定性拒絕（不呼叫 Approver）、無 TTY 時 `E_APPROVAL_REQUIRED_NO_TTY` 快速失敗、`run_powershell` 針對 §6.2 六類代表命令（強制／遞迴刪除、清空內容、大量移動覆寫、git 狀態變更、安裝或更新套件、網路傳輸、背景程序／job、workspace 外絕對路徑）的字串／token 分類。尚未接上 `internal/exec`／`internal/filetools`／`workspace.Workspace` 或實際 TUI／純文字 Approver 實作（該接線屬 #4、#2）。
+- [#8 F-7：實作 Provider Adapter（Pi delegated，ADR-002）](https://github.com/bext1998/brunel/issues/8) 核心實作已透過 PR #28 合併至 `main`（`internal/pirpc` 新套件＋共用的 `internal/redact` leaf 套件）：`BuildArgs` 依 spec §5.1 字面凍結命令組出啟動參數；`LaunchOptions.EffectiveProvider()` 是唯一的 effective-provider 解析點（顯式 `Provider`，否則取 `Model` 第一段前綴），`InjectCredentialsForLaunch` 用它注入憑證，因此只給 provider-prefixed model（不帶 `--provider`）也拿得到 Credential Manager key；`InjectCredentials` 要求傳入 `Credential{Provider, APIKey}`，provider 身份不符回 `E_PI_CREDENTIAL_MISMATCH` 且不注入，既有變數以 `EqualFold` 比對（Windows 大小寫不敏感）並改寫為正式名稱。`TranslateProviderError` 先以**原始**訊息分類，再只把遮罩後訊息放進公開 error（協定錯誤碼沿用 spec EC-11 的 `E_PROVIDER_PROTOCOL`）；`internal/redact.Secrets` 除啟發式規則外可接受呼叫端已知的實際 credential 值做精確替換（涵蓋 `sk-` 以外格式）。**殘留限制**：Pi 自行探索、Brunel 從未持有的 provider key 只剩啟發式遮罩，公開錯誤契約在該邊界的責任歸屬仍待 spec 決議。`bash_guard_test.go` 只是 literal 原始碼掃描的過渡 tripwire，**不等同滿足 INV-9**；完整 AST/lint＋CI 階段與正式 TC-PIRPC-001 由 Issue #30 處理。不含 Pi 子行程啟動／生命週期管理與 RPC event 轉譯（屬 #9）。
 - [#22 F-13：建立 Alpha 1 三類 E2E fixtures](https://github.com/bext1998/brunel/issues/22) 已新增；#2、#7、#9、#14 已分別同步薄型 TUI、事故防護、EventSink 與客觀 CompletionReport 範圍。
 
 ## 阻塞 Issues
 
 - 無規格決策阻塞 Alpha 1 實作。`docs/spec.md` §5／§9 的 Route B 修訂已於 v1.3（`7e9e01e`）完成。
 - #13（完成證據狀態機）與 #15（Smoke Benchmark Runner）已依 v1.2 以 `not planned` 關閉。
-- 可執行前線（無開放阻塞）：#4、#8、#30。#5（F-4）／#7（F-6）核心已合併，wiring 屬 #4；#29 待 #4；#9 待 #4／#8／#29／#30；#2 待 #9；#11 待 #9；#14 待 #4／#9；#22 待多項。
+- 可執行前線（無開放阻塞）：#4、#30。#5（F-4）／#7（F-6）／#8（F-7）核心已合併，#5／#7 wiring 屬 #4；#29 待 #4；#9 待 #4／#29／#30（#8 已合併）；#2 待 #9；#11 待 #9；#14 待 #4／#9；#22 待多項。
 
 ## 等待 Review
 
@@ -36,9 +37,11 @@
 
 - #5（F-4 stale-read，`internal/filetools`）核心經 PR #26 合併至 `main`；wiring／E2E 屬 #4，Issue 關閉待定。
 - #7（F-6 AUTO／CONFIRM，`internal/safety`）核心經 PR #27 合併至 `main`；wiring／整合測試屬 #4／#2，Issue 關閉待定。
+- #8（F-7 Provider Adapter，`internal/pirpc`＋`internal/redact`）核心經 PR #28 合併至 `main`；Pi 子行程啟動／RPC event 轉譯屬 #9，INV-9 完整防線屬 #30，Issue 關閉待定。
 
 ## 最近完成
 
+- PR #28（#8 F-7 Provider Adapter，`internal/pirpc`＋`internal/redact`）已合併至 `main`；經兩輪 review 修正（provider 錯誤訊息遮罩、協定錯誤碼對齊 spec EC-11 `E_PROVIDER_PROTOCOL`、`Credential` provider 綁定與 `E_PI_CREDENTIAL_MISMATCH`、`EffectiveProvider` 前綴解析、先分類再遮罩、`redact` 已知值精確遮罩、Windows 環境變數大小寫不敏感取代、INV-9 tripwire 誠實化）。INV-9 完整 AST/CI 防線仍屬 #30。
 - PR #26（#5 F-4 stale-read，`internal/filetools`）與 PR #27（#7 F-6 AUTO／CONFIRM，`internal/safety`）已合併至 `main`；均經多輪 review 修正（#26：非 Windows no-overwrite install、有界非阻塞鎖、誠實化 INV-6；#27：分隔符旁路、路徑正規化、覆寫／大量移動命令形式）。CI 於 `windows-latest` + `ubuntu-latest` 矩陣通過。
 - `docs/spec.md` 提升為 **v1.3.1**：§10 INV-6 標註為 best-effort、新增 §16 OQ-10（檔案寫入的 sub-millisecond rename 競態，Alpha 1 接受為 best-effort，Alpha 3「單一 writer」時重評）。
 - ADR-002 架構轉向拆解為 Issues（`maze-spec-to-issues`）：#8／#9 改標題與範圍、新增 #29／#30（皆由 #9 拆出、掛在 #1 下、assignee `bext1998`）；Gate 0 補測依使用者裁決不另建、CAND-1（OQ-8）暫緩；無新標籤。
@@ -62,5 +65,6 @@
 - v1.2 AC-7 的 stale-read 防護（#5）核心邏輯與單元測試已合併（PR #26），但尚未經由 #4 接上實際 `workspace.Workspace` 與 8 工具 schema 做 E2E／Integration 驗證（AC-7 正式判定需待 #4 的閉環測試）。
 - INV-6 為 best-effort（spec v1.3.1／OQ-10）：`internal/filetools` 無法完全消除鎖內重驗與原子換檔之間的 sub-millisecond rename 競態；Alpha 1 接受（併發寫入者僅外部人為編輯，Brunel 內部無併發 writer），Alpha 3「單一 writer」時重評。
 - AC-9～AC-11（AUTO 體驗、CONFIRM 分類、readonly／無 TTY）對應的 #7 核心決策邏輯與單元測試已合併（PR #27），但正式判定需待 #4（工具接線）、#2（TUI／純文字 Approver 實作）完成後的整合測試。
+- AC-4（Provider 與憑證）對應的 #8 已完成 `internal/pirpc` 的 provider／model 透傳、憑證環境變數注入與錯誤轉譯核心邏輯與單元測試（PR #28），但未經真實 Pi RPC 子行程驗證（子行程啟動／管理屬 #9）；`OPENROUTER_API_KEY` 等憑證環境變數命名依 Issue #24 Spike 分支的偵測結果，未對照 Pi 正式文件逐一確認。Pi 自行探索、Brunel 從未持有的 provider key 若被回顯於錯誤訊息，只能做啟發式遮罩；公開錯誤不含 secret 的最終責任邊界待 spec 或 #9 定義。
 - `internal/exec` 的 Timeout／MaxProcesses／MaxMemoryBytes／MaxOutputBytes 一律由呼叫端明確提供，套件本身不內建預設值；Alpha 1 不再需要 benchmark 硬性預算。
 - repository 的 `go.mod` 目前仍是 Go 1.22；本次依約不修改程式碼或依賴，後續實作 TUI 前需另行同步至 Go 1.25.x。
