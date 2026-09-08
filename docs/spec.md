@@ -1,10 +1,10 @@
 # Brunel Alpha 1 Specification
 
-**版本**：v1.3
+**版本**：v1.3.1
 
 **狀態**：Approved
 
-**日期**：2026-08-12
+**日期**：2026-09-08
 
 **適用對象**：實作工程師、AI 代理（Claude Code / Codex）、規格審查者
 
@@ -389,7 +389,7 @@ Report 以 UTF-8 JSON 寫入 workspace 內既存父目錄，採暫存檔後原�
 | INV-3 `[FROZEN]` | TUI／sink 不得授權或改變 agent 決策 | presentation 事件直接執行工具 | fake sink 不得影響工具結果 |
 | INV-4 `[FROZEN]` | 只有安全決策入口可呼叫 Approver | TUI 直接放行工具或 agent 繞過 gate | fake approver 與拒絕路徑 integration test |
 | INV-5 | workspace root identity 在 session 內不變 | junction 替換後操作到另一位置 | identity 與逃逸回歸測試 |
-| INV-6 | 寫入不覆蓋未知新版本 | stale 或失敗後檔案 hash 改變 | stale、conflict、磁碟錯誤測試 |
+| INV-6（best-effort） | 寫入不覆蓋未知新版本：`expected_hash` 前置條件 + 鎖內重驗 hash + 暫存檔原子換檔；hash 不符／patch conflict／寫入失敗一律保留原檔。無法完全消除鎖內重驗與換檔之間的 sub-millisecond rename 競態（見 OQ-10）。 | stale 或失敗後檔案 hash 改變 | stale、conflict、磁碟錯誤、鎖衝突有界失敗測試 |
 | INV-7 | 取消或逾時不留下子孫程序 | run 結束後程序仍存活 | Job Object E2E |
 | INV-8 | completed report 只含已有終態的 tool call | pending call 被宣稱完成 | 逐項移除終態的反例測試 |
 | INV-9 `[FROZEN]`（ADR-002） | `internal/pirpc` 絕不主動送出 `{"type":"bash"}` RPC command | Pi host-level bash side channel 被 Brunel 自己的 client 使用 | 對 `internal/pirpc` 原始碼做 CI lint／AST 檢查，禁止出現該 literal；見 Issue #24 Gate 2 |
@@ -512,6 +512,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 | OQ-7 | Context ledger 與 prompt 透明化是否納入 Alpha 1 | 維持候選，不阻塞發布 |
 | OQ-8（ADR-002） | Pi 版本如何釘選／升級，避免 Issue #24 Gate 1/2/3/4 證據隨版本更新失效 | 升級 Pi 版本前需重跑對應 Gate 的等價測試，不得假設行為不變 |
 | OQ-9（ADR-002） | Gate 0（未安裝 Git Bash 的乾淨環境驗證）由誰、何時補測 | 視為 Alpha 1 發布前的待確認事項；`internal/pirpc` 與 taylor-tools.ts 可先在有 Git Bash 的機器上開發，不阻塞其餘實作 |
+| OQ-10 | 檔案寫入的 sub-millisecond rename 競態：外部程序在 `internal/filetools` 鎖內重驗 hash 與原子換檔之間以 rename 蓋掉目標檔，會被靜默覆寫（OS 的 byte-range lock 不擋 rename，POSIX flock 為 advisory） | Alpha 1 接受為 best-effort：併發寫入者僅為外部人為編輯，Brunel 內部無併發 writer；命中後果為單次未提交編輯遺失、非損毀、非累積、git 可救。Alpha 3「單一 writer」時重評——屆時若 Brunel 內部出現併發 writer，需加 path-keyed 序列化 |
 
 未裁決問題不得由實作者自行升級成正式需求。
 
@@ -531,6 +532,7 @@ Alpha 1 發布門檻為 AC-1～AC-16 全部通過。候選功能不阻塞發布�
 
 | 版本 | 日期 | 修改內容 | 作者 |
 |---|---|---|---|
+| v1.3.1 | 2026-09-08 | §10 INV-6 標註為 best-effort 並說明殘餘 rename 競態（對齊 #5／PR #26 的實作：`expected_hash` + 鎖內重驗 + 暫存檔原子換檔）；新增 §16 OQ-10 記錄該競態的 Alpha 1 裁決（接受為 best-effort，Alpha 3「單一 writer」時重評）。僅文件對齊實作，行為與其他契約無變更。 | 使用者裁決 + Claude |
 | v1.3 | 2026-08-12 | 依 [ADR-002](adr/ADR-002-pi-agent-runtime.md) 正式修訂：G-1 放棄零依賴單檔 exe；§5 架構改為 Go Host + Pi RPC（`internal/pirpc`），8 個工具維持 Go 實作經 Taylor extension 暴露；§5.3 Provider 委派給 Pi，不再限定 OpenRouter，不再 FROZEN；新增 INV-9（`bash` command 禁止清單）；§7.1 Session 註記 Pi 自身 session 停用；§9 CT-6、§13 TC-PROV→TC-PIRPC、§14、§16 OQ-8／OQ-9 同步更新。§6（安全與事故防護）維持不變，僅註記 Pi 不繞過安全決策入口。 | 使用者裁決 + Claude（wayfinder 三題定案：8 工具全留 Go、session 以 Brunel 為準、provider 開放多家） |
 | v1.2 | 2026-07-14 | 將安全定位收斂為事故防護與 AUTO／CONFIRM；加入 Go 1.25 + Bubble Tea v2 薄型 TUI；CompletionReport 改記客觀事實；benchmark runner 移回 Alpha 4；合併重複工程契約為單一來源。 | Codex + 使用者裁決 |
 | v1.1 | 2026-07-13 | 補入工程契約、需求矩陣與測試計畫。 | Codex |
