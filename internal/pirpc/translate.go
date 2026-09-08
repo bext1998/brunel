@@ -1,6 +1,10 @@
 package pirpc
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/bext1998/brunel/internal/redact"
+)
 
 // ProviderErrorReport is the minimal shape of a provider-layer failure
 // reported over Pi's RPC protocol that #9's event loop will decode: an
@@ -32,8 +36,8 @@ var knownKinds = map[string]*Error{
 	"insufficient_quota": ErrPiProviderQuota,
 	"model_not_found":    ErrPiModelNotFound,
 	"invalid_model":      ErrPiModelNotFound,
-	"protocol":           ErrPiProtocol,
-	"malformed":          ErrPiProtocol,
+	"protocol":           ErrProviderProtocol,
+	"malformed":          ErrProviderProtocol,
 }
 
 // messageKeywords is the fallback used when Kind is empty or unrecognized:
@@ -45,26 +49,34 @@ var messageKeywords = []struct {
 	{ErrPiProviderAuth, []string{"unauthorized", "invalid api key", "invalid_api_key", "authentication failed", "forbidden", "401", "403"}},
 	{ErrPiProviderQuota, []string{"quota", "rate limit", "rate_limit", "insufficient credits", "429", "too many requests"}},
 	{ErrPiModelNotFound, []string{"model not found", "unknown model", "unsupported model", "no such model"}},
-	{ErrPiProtocol, []string{"malformed", "unexpected response", "protocol error", "invalid json", "parse error"}},
+	{ErrProviderProtocol, []string{"malformed", "unexpected response", "protocol error", "invalid json", "parse error"}},
 }
 
 // TranslateProviderError maps one provider-layer failure Pi reported over
-// RPC to a stable Brunel error code, preserving the original message for
-// display. It never retries and never suppresses the failure - the caller
-// (Issue #9's event loop) surfaces the returned error as-is.
+// RPC to a stable Brunel error code. The provider's human-readable message
+// is preserved for display, but first passed through redact.Secrets: a
+// provider is free to echo an Authorization header or API key back in its
+// error text, and spec.md §9 forbids a public error from carrying an API
+// key, Authorization header, or unmasked known secret. Classification
+// (Kind and keyword scan) runs on the masked message; the keywords are
+// error categories, not secrets, so masking does not change the outcome.
+//
+// It never retries and never suppresses the failure - the caller (Issue
+// #9's event loop) surfaces the returned error as-is.
 func TranslateProviderError(report ProviderErrorReport) error {
+	message := redact.Secrets(report.Message)
 	if coded, ok := knownKinds[normalizeKind(report.Kind)]; ok {
-		return codeError(coded.Code, report.Message, nil)
+		return codeError(coded.Code, message, nil)
 	}
-	lower := strings.ToLower(report.Message)
+	lower := strings.ToLower(message)
 	for _, entry := range messageKeywords {
 		for _, keyword := range entry.keywords {
 			if strings.Contains(lower, keyword) {
-				return codeError(entry.code.Code, report.Message, nil)
+				return codeError(entry.code.Code, message, nil)
 			}
 		}
 	}
-	return codeError(ErrPiProviderError.Code, report.Message, nil)
+	return codeError(ErrPiProviderError.Code, message, nil)
 }
 
 func normalizeKind(kind string) string {

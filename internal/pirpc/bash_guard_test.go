@@ -7,20 +7,36 @@ import (
 	"testing"
 )
 
-// TestSourceNeverSendsBashRPCCommand implements TC-PIRPC-001, the minimum
-// test protecting INV-9 (`[FROZEN]`, spec.md §10): internal/pirpc must
-// never send a `{"type":"bash"}` RPC command to Pi, since that host-level
-// side channel would bypass every Go-side safety and workspace guarantee
-// (spec.md §6.1 ADR-002 note, Issue #24 Gate 2). This package does not
-// build or send RPC commands yet - that is Issue #9's job - but the guard
-// is added now, with the package, so every future change to it (in #9 and
-// beyond) is checked automatically; this test's own source is excluded so
-// documenting the forbidden literal here does not trip it.
-func TestSourceNeverSendsBashRPCCommand(t *testing.T) {
-	const forbidden = `"type":"bash"`
-	// Also reject the same literal with any amount of whitespace around
-	// the colon, since real code is unlikely to hand-format compact JSON.
-	const forbiddenSpaced = `"type" : "bash"`
+// TestSourceHasNoLiteralBashRPCCommand is an interim, best-effort smoke
+// check for INV-9 (`[FROZEN]`, spec.md §10): internal/pirpc must never send
+// a `{"type":"bash"}` RPC command to Pi, since that host-level side channel
+// would bypass every Go-side safety and workspace guarantee (spec.md §6.1
+// ADR-002 note, Issue #24 Gate 2).
+//
+// This is NOT the full guard and does not by itself satisfy INV-9. It only
+// scans package source for the forbidden JSON literal in a few common
+// spellings. It would miss, for example, a command built with
+// json.Marshal over a struct whose field is tagged `json:"type"` and set to
+// "bash", or one assembled by string concatenation. The complete
+// AST/lint check plus a dedicated CI stage - and the formal TC-PIRPC-001
+// positive/negative cases - are tracked in Issue #30; until that lands,
+// treat this test as a low-cost regression tripwire, not proof.
+//
+// This package does not build or send RPC commands yet (that is Issue #9's
+// job); the tripwire is added now so an accidental literal in later changes
+// is caught early. This test's own source is excluded so documenting the
+// forbidden literal here does not trip it.
+func TestSourceHasNoLiteralBashRPCCommand(t *testing.T) {
+	// The literal in the spellings a hand-written command is most likely
+	// to use: raw compact JSON, raw JSON with spaces around the colon, and
+	// the same inside a double-quoted (escaped) Go string literal.
+	forbidden := []string{
+		`"type":"bash"`,
+		`"type": "bash"`,
+		`"type" : "bash"`,
+		`\"type\":\"bash\"`,
+		`\"type\": \"bash\"`,
+	}
 
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -37,9 +53,12 @@ func TestSourceNeverSendsBashRPCCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cannot read %s: %v", entry.Name(), err)
 		}
-		compact := strings.Join(strings.Fields(string(data)), " ")
-		if strings.Contains(string(data), forbidden) || strings.Contains(string(data), forbiddenSpaced) || strings.Contains(compact, `"type": "bash"`) || strings.Contains(compact, `"type":"bash"`) {
-			t.Fatalf("%s contains the forbidden bash RPC command literal (INV-9)", entry.Name())
+		raw := string(data)
+		compact := strings.Join(strings.Fields(raw), " ")
+		for _, needle := range forbidden {
+			if strings.Contains(raw, needle) || strings.Contains(compact, needle) {
+				t.Fatalf("%s contains a literal bash RPC command spelling %q (INV-9; full guard tracked in Issue #30)", entry.Name(), needle)
+			}
 		}
 	}
 }

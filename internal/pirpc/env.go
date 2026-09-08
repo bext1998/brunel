@@ -28,36 +28,77 @@ func CredentialEnvVar(provider string) (string, bool) {
 	return name, ok
 }
 
+// Credential is an API key together with the provider it authenticates.
+// Keeping the two bound means a key resolved for one provider can never be
+// injected into another provider's environment variable: InjectCredentials
+// rejects the pair when Provider does not resolve to the same variable as
+// the provider being launched. Today Brunel's config layer only produces an
+// OpenRouter credential (see OpenRouterCredential); other providers require
+// the caller to supply a Credential with the matching Provider.
+type Credential struct {
+	// Provider is the provider this key authenticates, e.g. "openrouter".
+	// Matched case-insensitively and via providerCredentialEnv aliases
+	// (so "google" and "gemini" are equivalent).
+	Provider string
+	// APIKey is the secret value. An empty APIKey means "no key to inject".
+	APIKey string
+}
+
+// OpenRouterCredential builds the one Credential Brunel's config layer can
+// resolve today (Issue #12: Windows Credential Manager -> OpenRouter key).
+// It exists so callers do not hand-write the provider string and risk a
+// mismatch.
+func OpenRouterCredential(apiKey string) Credential {
+	return Credential{Provider: "openrouter", APIKey: apiKey}
+}
+
 // InjectCredentials returns a copy of base (an os.Environ()-shaped slice of
-// "KEY=VALUE" strings) with provider's credential environment variable set
-// to apiKey, replacing any existing entry for that variable. base is never
-// modified in place. An unrecognized provider or an empty apiKey leaves the
-// environment unchanged - the subprocess then falls back to whatever
+// "KEY=VALUE" strings) with the environment variable Pi recognizes for
+// provider's API key set to cred.APIKey, replacing any existing entry for
+// that variable. base is never modified in place.
+//
+// The credential is only injected when cred.Provider resolves to the same
+// Pi environment variable as provider; otherwise the environment is
+// returned unchanged together with ErrCredentialProviderMismatch, so a key
+// resolved for one provider is never placed in a different provider's
+// variable (which would ship it to the wrong endpoint and defeat the
+// spec.md §9 "no unmasked secret in a public error" guarantee once that
+// endpoint echoed it back).
+//
+// An unrecognized provider or an empty cred.APIKey leaves the environment
+// unchanged with no error - the subprocess then falls back to whatever
 // credential Pi can find on its own (its settings.json, or a variable the
 // user already has set), which is an accepted limitation for providers
 // Brunel's own config layer does not yet resolve a key for (spec.md §5.3:
 // "須在 README／CLI help 明確揭露為「隨 Pi 版本變動」").
-func InjectCredentials(base []string, provider, apiKey string) []string {
+func InjectCredentials(base []string, provider string, cred Credential) ([]string, error) {
+	out := make([]string, len(base))
+	copy(out, base)
+
 	name, ok := CredentialEnvVar(provider)
-	if !ok || strings.TrimSpace(apiKey) == "" {
-		out := make([]string, len(base))
-		copy(out, base)
-		return out
+	if !ok || strings.TrimSpace(cred.APIKey) == "" {
+		return out, nil
 	}
 
-	out := make([]string, 0, len(base)+1)
+	credName, credOK := CredentialEnvVar(cred.Provider)
+	if !credOK || credName != name {
+		return out, codeError(ErrCredentialProviderMismatch.Code,
+			"credential resolved for a different provider was not injected", nil)
+	}
+
+	result := make([]string, 0, len(base)+1)
 	prefix := name + "="
 	replaced := false
 	for _, entry := range base {
 		if strings.HasPrefix(entry, prefix) {
-			out = append(out, prefix+apiKey)
+			result = append(result, prefix+cred.APIKey)
 			replaced = true
 			continue
 		}
-		out = append(out, entry)
+		result = append(result, entry)
 	}
 	if !replaced {
-		out = append(out, prefix+apiKey)
+		result = append(result, prefix+cred.APIKey)
 	}
-	return out
+	return result, nil
 }

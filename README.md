@@ -18,7 +18,7 @@ Brunel 是一個面向 Windows x64 的實驗性 coding harness，用來驗證：
 
 Brunel 不自行實作 provider 選擇、SSE streaming、tool-call probe 或重試邏輯——這些都委派給 Pi（`internal/pirpc`）。**實際可用的 provider／model 範圍等於使用者當下安裝的 Pi 版本所支援的範圍，會隨 Pi 版本變動，Brunel 不承諾涵蓋任何特定清單。** `--model`（可含 provider 前綴，語法依 Pi 慣例）與可選的 provider 會直接透傳給 `pi --mode rpc` 的啟動參數；Pi 回報的 provider 層錯誤（認證、額度、模型不存在、協定錯誤）會被轉譯為 Brunel 自己的錯誤碼顯示，但 Brunel 不會自行重試或覆蓋 Pi 已決定的重試／放棄行為。
 
-API key 一律優先存於 Windows Credential Manager，並在啟動 Pi 子行程時經環境變數注入（例如 `OPENROUTER_API_KEY`，比照 Pi 自己已支援的憑證機制），不會寫入任何專案設定檔。
+API key 一律優先存於 Windows Credential Manager，並在啟動 Pi 子行程時經環境變數注入（例如 `OPENROUTER_API_KEY`，比照 Pi 自己已支援的憑證機制），不會寫入任何專案設定檔。注入時 key 會與其來源 provider 綁定，provider 不符則拒絕注入。目前 Brunel 只從 Credential Manager 解析 **OpenRouter** key；其他 provider 的憑證需由使用者自行設定，交由 Pi 既有的 credential 探索機制（`settings.json` 或既有環境變數）處理。
 
 ## 開發指引
 

@@ -51,11 +51,21 @@ var (
 	// unknown/unsupported model, and a malformed or unexpected RPC
 	// protocol response. ErrPiProviderError is the fallback for a
 	// provider-layer failure that does not match any of those.
-	ErrPiProviderAuth  = &Error{Code: "E_PI_PROVIDER_AUTH"}
-	ErrPiProviderQuota = &Error{Code: "E_PI_PROVIDER_QUOTA"}
-	ErrPiModelNotFound = &Error{Code: "E_PI_MODEL_NOT_FOUND"}
-	ErrPiProtocol      = &Error{Code: "E_PI_PROTOCOL"}
-	ErrPiProviderError = &Error{Code: "E_PI_PROVIDER_ERROR"}
+	//
+	// ErrProviderProtocol's code is fixed by spec.md §11 EC-11, which
+	// names E_PROVIDER_PROTOCOL as the public code for a malformed SSE /
+	// duplicate tool ID / unknown finish reason; it is deliberately not
+	// Pi-prefixed like the others so a spec-driven consumer matches it.
+	ErrPiProviderAuth   = &Error{Code: "E_PI_PROVIDER_AUTH"}
+	ErrPiProviderQuota  = &Error{Code: "E_PI_PROVIDER_QUOTA"}
+	ErrPiModelNotFound  = &Error{Code: "E_PI_MODEL_NOT_FOUND"}
+	ErrProviderProtocol = &Error{Code: "E_PROVIDER_PROTOCOL"}
+	ErrPiProviderError  = &Error{Code: "E_PI_PROVIDER_ERROR"}
+
+	// ErrCredentialProviderMismatch is returned by InjectCredentials when
+	// the credential handed in was resolved for a different provider than
+	// the one being launched; the key is not injected (see env.go).
+	ErrCredentialProviderMismatch = &Error{Code: "E_PI_CREDENTIAL_MISMATCH"}
 )
 
 func codeError(code, message string, cause error) error {
