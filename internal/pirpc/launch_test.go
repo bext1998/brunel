@@ -55,6 +55,27 @@ func TestBuildArgsUsesCustomExtensionPath(t *testing.T) {
 	}
 }
 
+func TestEffectiveProvider(t *testing.T) {
+	cases := []struct {
+		name string
+		opts LaunchOptions
+		want string
+	}{
+		{"explicit provider wins over model prefix", LaunchOptions{Provider: "openrouter", Model: "anthropic/claude-sonnet-4"}, "openrouter"},
+		{"model prefix used when provider empty", LaunchOptions{Model: "openrouter/anthropic/claude-sonnet-4"}, "openrouter"},
+		{"single-segment provider prefix", LaunchOptions{Model: "openai/gpt-4o"}, "openai"},
+		{"no provider and no prefix", LaunchOptions{Model: "gpt-4o"}, ""},
+		{"whitespace is trimmed", LaunchOptions{Model: "  gemini/pro  "}, "gemini"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.opts.EffectiveProvider(); got != tc.want {
+				t.Fatalf("EffectiveProvider() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestBuildArgsRejectsEmptyModel(t *testing.T) {
 	if _, err := BuildArgs(LaunchOptions{Provider: "openrouter"}); ErrorCode(err) != ErrInvalidArgument.Code {
 		t.Fatalf("ErrorCode() = %q, want %q (err=%v)", ErrorCode(err), ErrInvalidArgument.Code, err)

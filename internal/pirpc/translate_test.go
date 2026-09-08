@@ -94,11 +94,50 @@ func TestTranslateProviderErrorMasksCredentialsInMessage(t *testing.T) {
 			if got := err.Error(); strings.Contains(got, tc.leak) {
 				t.Fatalf("translated error %q still contains secret %q", got, tc.leak)
 			}
-			// The auth classification must still work off the masked text.
+			// Classification runs on the raw report, so the auth category
+			// survives even when masking later rewrites that part.
 			if ErrorCode(err) != ErrPiProviderAuth.Code {
 				t.Fatalf("ErrorCode() = %q, want %q", ErrorCode(err), ErrPiProviderAuth.Code)
 			}
 		})
+	}
+}
+
+func TestTranslateProviderErrorClassifiesFromRawBeforeMasking(t *testing.T) {
+	// The credential assignment and the "unauthorized" keyword share a
+	// line, so envSecretRE eats the whole line when masking. Classifying
+	// the raw message first keeps the auth category; only the displayed
+	// message is masked.
+	report := ProviderErrorReport{Message: "OPENROUTER_API_KEY=sk-or-v1-secretsecret: unauthorized"}
+	err := TranslateProviderError(report)
+	if ErrorCode(err) != ErrPiProviderAuth.Code {
+		t.Fatalf("ErrorCode() = %q, want %q (must classify from the raw message)", ErrorCode(err), ErrPiProviderAuth.Code)
+	}
+	if strings.Contains(err.Error(), "sk-or-v1-secretsecret") {
+		t.Fatalf("err.Error() = %q, secret survived masking", err.Error())
+	}
+}
+
+func TestTranslateProviderErrorRedactsKnownSecretValue(t *testing.T) {
+	// A provider key whose format the heuristics do not recognize (here a
+	// Google "AIza..." key) is still removed when the caller passes its
+	// exact value, which #9 holds after injecting it.
+	const key = "AIzaSyD-ExampleKey-000111222333444555666"
+	report := ProviderErrorReport{Message: "authentication failed for API key " + key}
+
+	err := TranslateProviderError(report, key)
+	if strings.Contains(err.Error(), key) {
+		t.Fatalf("err.Error() = %q, known secret was not redacted", err.Error())
+	}
+	if ErrorCode(err) != ErrPiProviderAuth.Code {
+		t.Fatalf("ErrorCode() = %q, want %q", ErrorCode(err), ErrPiProviderAuth.Code)
+	}
+
+	// Documented limitation: without the known value the heuristics alone
+	// do not catch this format.
+	blind := TranslateProviderError(report)
+	if !strings.Contains(blind.Error(), key) {
+		t.Fatalf("heuristics unexpectedly masked %q; update this test and the spec §9 boundary note", key)
 	}
 }
 

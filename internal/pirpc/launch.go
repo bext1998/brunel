@@ -27,6 +27,26 @@ type LaunchOptions struct {
 	ExtensionPath string
 }
 
+// EffectiveProvider is the single place that answers "which provider do
+// these options actually target": the explicit Provider when set, otherwise
+// the prefix of Model up to the first "/" (Pi's --model convention is
+// "<provider>/<model...>" when no --provider flag is given, per the launch
+// command in spec.md §5.1). It returns "" only when neither is available.
+//
+// Credential injection must use this, not opts.Provider directly:
+// BuildArgs already handles a provider-prefixed model by passing it through
+// verbatim, so a caller is allowed to leave Provider empty, and reading
+// opts.Provider alone would then miss the Credential Manager key entirely.
+func (opts LaunchOptions) EffectiveProvider() string {
+	if p := strings.TrimSpace(opts.Provider); p != "" {
+		return p
+	}
+	if prefix, _, ok := strings.Cut(strings.TrimSpace(opts.Model), "/"); ok {
+		return strings.TrimSpace(prefix)
+	}
+	return ""
+}
+
 // BuildArgs returns the full argument list for launching `pi` as an RPC
 // subprocess, matching the literal frozen command in spec.md §5.1:
 //

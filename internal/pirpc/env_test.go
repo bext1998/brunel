@@ -65,6 +65,56 @@ func TestInjectCredentialsReplacesExistingVariable(t *testing.T) {
 	}
 }
 
+func TestInjectCredentialsReplacesCaseInsensitiveVariable(t *testing.T) {
+	// Windows env var names are case-insensitive: an existing entry under a
+	// different casing is the same variable and must be dropped, not left
+	// beside the new one with its old secret value.
+	base := []string{"OpenRouter_Api_Key=old-leaked-value", "PATH=C:\\Windows"}
+	out, err := InjectCredentials(base, "openrouter", OpenRouterCredential("sk-fresh-key"))
+	if err != nil {
+		t.Fatalf("InjectCredentials() error = %v", err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("len(out) = %d, want 2 (case-insensitive replace, not append): %v", len(out), out)
+	}
+	if !contains(out, "OPENROUTER_API_KEY=sk-fresh-key") {
+		t.Fatalf("out = %v, want canonical-cased replaced credential", out)
+	}
+	for _, e := range out {
+		if strings.Contains(e, "old-leaked-value") {
+			t.Fatalf("out = %v, old credential value survived under its original casing", out)
+		}
+	}
+}
+
+func TestInjectCredentialsForLaunchResolvesModelPrefix(t *testing.T) {
+	// A provider-prefixed model with no explicit Provider must still get
+	// the Credential Manager key (the finding this guards).
+	base := []string{"PATH=C:\\Windows"}
+	opts := LaunchOptions{Model: "openrouter/anthropic/claude-sonnet-4"}
+	out, err := InjectCredentialsForLaunch(base, opts, OpenRouterCredential("sk-launch-key"))
+	if err != nil {
+		t.Fatalf("InjectCredentialsForLaunch() error = %v", err)
+	}
+	if !contains(out, "OPENROUTER_API_KEY=sk-launch-key") {
+		t.Fatalf("out = %v, want key injected for the model-prefix provider", out)
+	}
+}
+
+func TestInjectCredentialsForLaunchStillRejectsMismatch(t *testing.T) {
+	base := []string{"PATH=C:\\Windows"}
+	opts := LaunchOptions{Model: "openai/gpt-4o"}
+	out, err := InjectCredentialsForLaunch(base, opts, OpenRouterCredential("sk-or-v1-secretvalue"))
+	if ErrorCode(err) != ErrCredentialProviderMismatch.Code {
+		t.Fatalf("ErrorCode(err) = %q, want %q", ErrorCode(err), ErrCredentialProviderMismatch.Code)
+	}
+	for _, e := range out {
+		if strings.Contains(e, "sk-or-v1-secretvalue") {
+			t.Fatalf("out = %v, mismatched key leaked into environment", out)
+		}
+	}
+}
+
 func TestInjectCredentialsRejectsProviderMismatch(t *testing.T) {
 	// The defect this guards: a caller passing the OpenRouter key that
 	// config resolves today under provider="openai" would otherwise put an

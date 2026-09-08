@@ -53,30 +53,46 @@ var messageKeywords = []struct {
 }
 
 // TranslateProviderError maps one provider-layer failure Pi reported over
-// RPC to a stable Brunel error code. The provider's human-readable message
-// is preserved for display, but first passed through redact.Secrets: a
-// provider is free to echo an Authorization header or API key back in its
-// error text, and spec.md §9 forbids a public error from carrying an API
-// key, Authorization header, or unmasked known secret. Classification
-// (Kind and keyword scan) runs on the masked message; the keywords are
-// error categories, not secrets, so masking does not change the outcome.
+// RPC to a stable Brunel error code.
+//
+// Classification runs on the *raw* report (Kind, then a keyword scan over
+// the original Message): a provider may echo a credential assignment on the
+// same line as the error category ("OPENROUTER_API_KEY=... : unauthorized"),
+// and masking that line first would delete the category with it.
+//
+// Only the message placed in the returned (public) error is masked, via
+// redact.Secrets: a provider is free to echo an Authorization header or API
+// key back in its error text, and spec.md §9 forbids a public error from
+// carrying an API key, Authorization header, or unmasked known secret.
+// knownSecrets are exact credential values the caller already holds for
+// this launch (e.g. the injected API key); they are redacted by exact
+// match, covering provider key formats the heuristics do not recognize.
+// For providers whose key Brunel never sees (Pi discovers it itself) only
+// the heuristics apply - see redact.Secrets.
 //
 // It never retries and never suppresses the failure - the caller (Issue
 // #9's event loop) surfaces the returned error as-is.
-func TranslateProviderError(report ProviderErrorReport) error {
-	message := redact.Secrets(report.Message)
+func TranslateProviderError(report ProviderErrorReport, knownSecrets ...string) error {
+	coded := classifyProviderError(report)
+	return codeError(coded.Code, redact.Secrets(report.Message, knownSecrets...), nil)
+}
+
+// classifyProviderError picks the stable code for report from its raw
+// (unmasked) fields: Kind first, then an ordered keyword scan over Message,
+// falling back to the generic provider error.
+func classifyProviderError(report ProviderErrorReport) *Error {
 	if coded, ok := knownKinds[normalizeKind(report.Kind)]; ok {
-		return codeError(coded.Code, message, nil)
+		return coded
 	}
-	lower := strings.ToLower(message)
+	lower := strings.ToLower(report.Message)
 	for _, entry := range messageKeywords {
 		for _, keyword := range entry.keywords {
 			if strings.Contains(lower, keyword) {
-				return codeError(entry.code.Code, message, nil)
+				return entry.code
 			}
 		}
 	}
-	return codeError(ErrPiProviderError.Code, message, nil)
+	return ErrPiProviderError
 }
 
 func normalizeKind(kind string) string {

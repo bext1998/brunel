@@ -59,3 +59,36 @@ func TestSecretsLeavesPlainTextUnchanged(t *testing.T) {
 		t.Fatalf("Secrets(%q) = %q, want unchanged", in, got)
 	}
 }
+
+func TestSecretsRedactsKnownValuesTheHeuristicsMiss(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		key  string
+	}{
+		{"google AIza key", "auth failed for AIzaSyD-ExampleKey-000111222333444 today", "AIzaSyD-ExampleKey-000111222333444"},
+		{"groq gsk_ key", "invalid token gsk_ExampleExampleExample000111 supplied", "gsk_ExampleExampleExample000111"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Secrets(tc.in); !strings.Contains(got, tc.key) {
+				t.Fatalf("Secrets(..) = %q, heuristics unexpectedly caught %q; fold it into the regex set and drop this case", got, tc.key)
+			}
+			got := Secrets(tc.in, tc.key)
+			if strings.Contains(got, tc.key) {
+				t.Fatalf("Secrets(.., known) = %q, known value %q not redacted", got, tc.key)
+			}
+			if !strings.Contains(got, "[REDACTED]") {
+				t.Fatalf("Secrets(.., known) = %q, expected a [REDACTED] marker", got)
+			}
+		})
+	}
+}
+
+func TestSecretsIgnoresEmptyOrShortKnownValues(t *testing.T) {
+	in := "provider returned an opaque failure"
+	// "" and short values must not turn into a [REDACTED] carpet.
+	if got := Secrets(in, "", "abc", "  "); got != in {
+		t.Fatalf("Secrets(%q, empty/short...) = %q, want unchanged", in, got)
+	}
+}

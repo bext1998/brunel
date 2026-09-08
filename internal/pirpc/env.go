@@ -86,19 +86,38 @@ func InjectCredentials(base []string, provider string, cred Credential) ([]strin
 			"credential resolved for a different provider was not injected", nil)
 	}
 
+	// Windows environment variable names are case-insensitive, so an
+	// existing "OpenRouter_Api_Key=old" must be treated as the same
+	// variable and dropped, not left in place next to the new entry. Match
+	// on the name left of the first "=" with EqualFold and re-emit the
+	// canonical name. Any later case-variant duplicates collapse into the
+	// one canonical entry.
 	result := make([]string, 0, len(base)+1)
-	prefix := name + "="
+	canonical := name + "=" + cred.APIKey
 	replaced := false
 	for _, entry := range base {
-		if strings.HasPrefix(entry, prefix) {
-			result = append(result, prefix+cred.APIKey)
-			replaced = true
+		entryName, _, hasEq := strings.Cut(entry, "=")
+		if hasEq && strings.EqualFold(entryName, name) {
+			if !replaced {
+				result = append(result, canonical)
+				replaced = true
+			}
 			continue
 		}
 		result = append(result, entry)
 	}
 	if !replaced {
-		result = append(result, prefix+cred.APIKey)
+		result = append(result, canonical)
 	}
 	return result, nil
+}
+
+// InjectCredentialsForLaunch injects cred for the provider opts actually
+// target (opts.EffectiveProvider()), so a provider-prefixed model with no
+// explicit LaunchOptions.Provider still receives the Credential Manager
+// key. It is the entry point Issue #9's subprocess launcher should call;
+// InjectCredentials remains available when the provider is already known
+// independently of a LaunchOptions.
+func InjectCredentialsForLaunch(base []string, opts LaunchOptions, cred Credential) ([]string, error) {
+	return InjectCredentials(base, opts.EffectiveProvider(), cred)
 }
