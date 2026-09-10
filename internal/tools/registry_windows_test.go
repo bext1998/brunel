@@ -67,6 +67,74 @@ func TestRegistryDeniedPowerShellHasNoBypass(t *testing.T) {
 	assertFileContent(t, filepath.Join(root, "x"), "present\n")
 }
 
+func TestRegistryRequiresGateBeforeEveryTool(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "note.txt"), "original\n")
+	ws, err := workspace.Bind(root)
+	if err != nil {
+		t.Fatalf("bind workspace: %v", err)
+	}
+	registry := &Registry{Workspace: ws}
+	calls := []struct {
+		name   string
+		params string
+	}{
+		{"list_files", `{"path":"."}`},
+		{"search_text", `{"pattern":"original"}`},
+		{"read_file", `{"path":"note.txt"}`},
+		{"workspace_diff", `{}`},
+		{"apply_patch", `{"path":"note.txt","expected_hash":"hash","hunks":[]}`},
+		{"create_file", `{"path":"new.txt","content":"new"}`},
+		{"write_file", `{"path":"note.txt","expected_hash":"hash","content":"changed"}`},
+		{"run_powershell", `{"command":"Write-Output blocked"}`},
+	}
+	for _, call := range calls {
+		_, err := registry.Call(context.Background(), call.name, json.RawMessage(call.params))
+		if ErrorCode(err) != ErrInvalidArgument.Code {
+			t.Fatalf("%s without a gate returned code %q (err=%v), want %q", call.name, ErrorCode(err), err, ErrInvalidArgument.Code)
+		}
+	}
+	assertFileContent(t, filepath.Join(root, "note.txt"), "original\n")
+	if _, err := os.Stat(filepath.Join(root, "new.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("call without a gate created new.txt: %v", err)
+	}
+}
+
+func TestErrorCodeResolvesDependencyErrorsFromRegistry(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "note.txt"), "original\n")
+	workspaceRegistry := newTestRegistry(t, root, safety.ModeWorkspace, nil, nil)
+	readonlyRegistry := newTestRegistry(t, root, safety.ModeReadonly, nil, nil)
+	deniedRegistry := newTestRegistry(t, root, safety.ModeWorkspace, &fakeApprover{approve: false}, nil)
+
+	cases := []struct {
+		name     string
+		registry *Registry
+		tool     string
+		params   string
+		wantCode string
+	}{
+		{"path escape", workspaceRegistry, "read_file", `{"path":"..\\outside"}`, "E_PATH_ESCAPE"},
+		{"readonly", readonlyRegistry, "create_file", `{"path":"new.txt","content":"new"}`, "E_READONLY_MODE"},
+		{"approval denied", deniedRegistry, "run_powershell", `{"command":"Remove-Item .\\note.txt -Recurse"}`, "E_APPROVAL_DENIED"},
+		{"file exists", workspaceRegistry, "create_file", `{"path":"note.txt","content":"new"}`, "E_FILE_EXISTS"},
+		{"stale hash", workspaceRegistry, "write_file", `{"path":"note.txt","expected_hash":"not-the-current-hash","content":"changed"}`, "E_STALE_HASH"},
+		{"exec unsupported", workspaceRegistry, "run_powershell", `{"command":"Write-Output noop"}`, "E_UNSUPPORTED_PLATFORM"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tc.registry.Call(context.Background(), tc.tool, json.RawMessage(tc.params))
+			if err == nil {
+				t.Fatal("Registry.Call returned nil error")
+			}
+			if code := ErrorCode(err); code != tc.wantCode {
+				t.Fatalf("ErrorCode(%v) = %q, want %q", err, code, tc.wantCode)
+			}
+		})
+	}
+	assertFileContent(t, filepath.Join(root, "note.txt"), "original\n")
+}
+
 func TestRegistryReadonlyRejectsMutationsAndAllowsReads(t *testing.T) {
 	if _, err := osexec.LookPath("git"); err != nil {
 		t.Skip("git is required for workspace_diff: ", err)

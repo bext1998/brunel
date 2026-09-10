@@ -4,6 +4,11 @@ package tools
 import (
 	"errors"
 	"fmt"
+
+	brunelexec "github.com/bext1998/brunel/internal/exec"
+	"github.com/bext1998/brunel/internal/filetools"
+	"github.com/bext1998/brunel/internal/safety"
+	"github.com/bext1998/brunel/internal/workspace"
 )
 
 // Error is a stable, machine-readable tools error.
@@ -40,13 +45,22 @@ func codeError(code, message string, cause error) error {
 	return &Error{Code: code, Message: message, Cause: cause}
 }
 
-// ErrorCode returns a stable error code when err is a tools Error. Errors
-// returned by workspace, filetools, exec, and safety are deliberately passed
-// through without wrapping so their own ErrorCode helpers retain authority.
+// ErrorCode returns a stable error code from tools errors and from dependency
+// errors passed through unchanged by Registry.Call.
 func ErrorCode(err error) string {
 	var coded *Error
 	if errors.As(err, &coded) {
 		return coded.Code
+	}
+	for _, code := range []string{
+		safety.ErrorCode(err),
+		workspace.ErrorCode(err),
+		filetools.ErrorCode(err),
+		brunelexec.ErrorCode(err),
+	} {
+		if code != "" {
+			return code
+		}
 	}
 	return ""
 }
