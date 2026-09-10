@@ -16,6 +16,7 @@ Brunel 是一個面向 Windows x64 的薄型 coding harness 實驗，重點是�
 4. 每次 session 結束前同步 `STATUS.md` 與 `NEXT_ACTION.md`。
 5. Git commit 或 push 前遵循 `maze-github-safe-ops` 的 pre-commit 與 pre-push 檢查清單。
 6. 後續變更使用功能分支與 Pull Request；不得直接推送 `main`。
+7. Git Worktrees 請集中放置於 `D:\AgentCoding\.codex\worktrees\Brunel`；建立 Git Worktree 時的分支名稱一律採用 `maze/YYYY-MM-DD-short-hash`，其中 `short-hash` 為隨機值，字尾不得再加任何字樣。
 
 ## 當前狀態與下一步
 
