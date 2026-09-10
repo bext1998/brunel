@@ -1,0 +1,11 @@
+{
+  "name": "brunel-taylor-tools",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "dependencies": {
+    "typebox": "^1.0.0"
+  }
+}
