@@ -1,0 +1,46 @@
+{
+  "apply_patch": [
+    "path",
+    "expected_hash",
+    "hunks"
+  ],
+  "apply_patch.hunks": [
+    "start_line",
+    "end_line",
+    "old_lines",
+    "new_lines"
+  ],
+  "create_file": [
+    "path",
+    "content"
+  ],
+  "list_files": [
+    "path",
+    "glob",
+    "max_depth"
+  ],
+  "read_file": [
+    "path",
+    "start_line",
+    "end_line"
+  ],
+  "run_powershell": [
+    "command",
+    "timeout_sec",
+    "cwd"
+  ],
+  "search_text": [
+    "pattern",
+    "path",
+    "glob",
+    "max_results"
+  ],
+  "workspace_diff": [
+    "path"
+  ],
+  "write_file": [
+    "path",
+    "expected_hash",
+    "content"
+  ]
+}
