@@ -1,3 +1,4 @@
-# Keep the tools parameter-schema snapshot LF-only so the byte comparison in
-# schema_snapshot_test.go is stable regardless of a contributor's core.autocrlf.
+# Keep JSON snapshot goldens LF-only so byte comparisons in the tests that
+# read them are stable regardless of a contributor's core.autocrlf.
 internal/tools/testdata/params_schema.json text eol=lf
+cmd/brunel/testdata/list_files_response.json text eol=lf
