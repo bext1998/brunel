@@ -1,3 +1,21 @@
+# The two matrix rows have different purposes:
+#
+#   windows-latest (target)            Brunel's only supported platform
+#                                      (docs/spec.md §2.2). This row is the
+#                                      product gate: the Windows-only Job Object,
+#                                      workspace identity, and PowerShell paths
+#                                      only ever run here.
+#
+#   ubuntu-latest (portability-guard)  NOT a support target. It keeps the
+#                                      platform-agnostic core (internal/filetools,
+#                                      internal/safety, internal/redact,
+#                                      internal/tools parameter validation,
+#                                      search/list) free of leaked Windows
+#                                      syscalls, keeps the //go:build !windows
+#                                      stubs in sync, and exercises the
+#                                      non-Windows atomic-write / lock paths. A
+#                                      green ubuntu run does not mean Brunel
+#                                      supports Linux.
 name: CI
 
 on:
@@ -9,7 +27,12 @@ jobs:
   build-test:
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            role: target
+          - os: ubuntu-latest
+            role: portability-guard
+    name: build-test (${{ matrix.os }} - ${{ matrix.role }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
