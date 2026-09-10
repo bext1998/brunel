@@ -47,6 +47,9 @@ jobs:
       - name: go build
         run: go build ./...
 
+      - name: INV-9 static check
+        run: go test -count=1 ./internal/pirpc -run '^TestTCPIRPC001$'
+
       - name: go test
         run: go test -v ./...
 
