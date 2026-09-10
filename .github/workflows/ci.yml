@@ -7,10 +7,9 @@
 #                                      only ever run here.
 #
 #   ubuntu-latest (portability-guard)  NOT a support target. It keeps the
-#                                      platform-agnostic core (internal/filetools,
-#                                      internal/safety, internal/redact,
-#                                      internal/tools parameter validation,
-#                                      search/list) free of leaked Windows
+#                                      platform-agnostic core packages
+#                                      (internal/filetools, internal/safety,
+#                                      internal/redact) free of leaked Windows
 #                                      syscalls, keeps the //go:build !windows
 #                                      stubs in sync, and exercises the
 #                                      non-Windows atomic-write / lock paths. A
